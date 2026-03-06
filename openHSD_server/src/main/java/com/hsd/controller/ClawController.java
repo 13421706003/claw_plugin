@@ -18,6 +18,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/claw")
 @RequiredArgsConstructor
+//@CrossOrigin(origins = "*", allowedHeaders = "*", allowCredentials = "true")
 public class ClawController {
 
     private final SessionRegistry sessionRegistry;

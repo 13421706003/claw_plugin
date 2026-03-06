@@ -26,6 +26,7 @@ import java.time.Instant;
 public class ClawWebSocketHandler extends TextWebSocketHandler {
 
     private final SessionRegistry sessionRegistry;
+    private final WebSessionRegistry webSessionRegistry;
 
     // ----------------------------------------------------------------
     // 连接生命周期
@@ -135,10 +136,16 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
         String status    = json.getString("status");
         String result    = json.getString("result");
 
-        log.info("[ClawWS] response 收到：userId={}，messageId={}，status={}，result={}",
-                userId, messageId, status, result);
+        log.info("[ClawWS] response 收到：userId={}，messageId={}，status={}", userId, messageId, status);
 
-        // TODO: 后续对接 Web 端 WS 推送 / 数据库持久化
+        // 转发给前端
+        String jsonStr = buildJson(
+                "type", "response",
+                "messageId", messageId,
+                "status", status,
+                "result", result
+        );
+        webSessionRegistry.pushToUser(userId, jsonStr);
     }
 
     /**
@@ -149,10 +156,16 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
         String chunk     = json.getString("chunk");
         Integer seq      = json.getInteger("seq");
 
-        log.info("[ClawWS] response_chunk 收到：userId={}，messageId={}，seq={}，chunk={}",
-                userId, messageId, seq, chunk);
+        log.debug("[ClawWS] response_chunk 收到：userId={}，messageId={}，seq={}", userId, messageId, seq);
 
-        // TODO: 后续对接 Web 端 WS 推送
+        // 转发给前端
+        String jsonStr = buildJson(
+                "type", "response_chunk",
+                "messageId", messageId,
+                "chunk", chunk,
+                "seq", seq
+        );
+        webSessionRegistry.pushToUser(userId, jsonStr);
     }
 
     // ----------------------------------------------------------------

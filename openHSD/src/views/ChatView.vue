@@ -95,8 +95,8 @@
         </div>
 
         <div :style="layoutStyles.headerRight">
-          <Badge status="success" text="正常" />
-          <span style="color: #999; font-size: 12px">版本 2026.2.27</span>
+          <Badge :status="isConnected ? 'success' : 'error'" :text="isConnected ? '已连接' : '未连接'" />
+          <span style="color: #999; font-size: 12px">版本 2026.3.6</span>
         </div>
       </div>
 
@@ -134,7 +134,7 @@
       <div :style="chatStyles.chatContent">
         <!-- 消息列表 / 欢迎界面 -->
         <div :style="chatStyles.chatList">
-          <template v-if="chatMessages.length > 0">
+          <template v-if="messages.length > 0">
             <Bubble.List
               :items="bubbleItems"
               :roles="bubbleRoles"
@@ -295,33 +295,13 @@ import {
   ApiOutlined,
   RobotOutlined,
 } from '@ant-design/icons-vue'
+import { loading, messages, sendMessage, isConnected } from '../api/aiService.js'
 
 // ==================== State ====================
-const loading = ref(false)
 const inputValue = ref('')
 const attachmentsOpen = ref(false)
 const attachedFiles = ref([])
 const siderCollapsed = ref(false)
-
-// 消息历史记录
-const messageHistory = ref({})
-
-// 会话列表
-const conversationItems = ref([
-  {
-    key: 'default-0',
-    label: '新对话',
-    group: '今天',
-  },
-])
-
-// 当前会话
-const curConversation = ref('default-0')
-
-// 当前会话的消息列表
-const chatMessages = ref([])
-
-// 当前选择的session
 const currentSession = ref('Main Session')
 
 // ==================== Theme ====================
@@ -512,96 +492,17 @@ const SENDER_PROMPTS = [
 // ==================== Methods ====================
 const onSubmit = (val) => {
   if (!val) return
-
   if (loading.value) {
     message.error('请求正在进行中，请稍候...')
     return
   }
-
-  loading.value = true
-
-  // 添加用户消息
-  chatMessages.value = [
-    ...chatMessages.value,
-    { role: 'user', content: val },
-  ]
-
-  // 更新会话标签(用第一条消息)
-  const currentConv = conversationItems.value.find(
-    (c) => c.key === curConversation.value
-  )
-  if (
-    currentConv &&
-    (currentConv.label === '新对话' ||
-      currentConv.label.startsWith('新对话 '))
-  ) {
-    currentConv.label = val.length > 20 ? val.substring(0, 20) + '...' : val
-  }
-
-  // 模拟 AI 响应
-  setTimeout(() => {
-    chatMessages.value = [
-      ...chatMessages.value,
-      {
-        role: 'assistant',
-        content: `这是对 "${val}" 的模拟回复。在实际项目中，这里将连接到真实的 AI 服务。\n\n您可以通过配置 API 接口来接入如 OpenAI、DeepSeek 等大语言模型服务。`,
-      },
-    ]
-    loading.value = false
-
-    // 保存到历史
-    messageHistory.value[curConversation.value] = [...chatMessages.value]
-  }, 1500)
-
+  sendMessage(val)
   inputValue.value = ''
 }
 
 const onCreateConversation = () => {
-  if (loading.value) {
-    message.error('请等待当前请求完成后再创建新对话...')
-    return
-  }
-
-  // 保存当前消息
-  if (chatMessages.value.length > 0) {
-    messageHistory.value[curConversation.value] = [...chatMessages.value]
-  }
-
-  const now = Date.now().toString()
-  conversationItems.value = [
-    {
-      key: now,
-      label: `新对话 ${conversationItems.value.length + 1}`,
-      group: '今天',
-    },
-    ...conversationItems.value,
-  ]
-  curConversation.value = now
-  chatMessages.value = []
-}
-
-const onConversationChange = (key) => {
-  // 保存当前消息
-  if (chatMessages.value.length > 0) {
-    messageHistory.value[curConversation.value] = [...chatMessages.value]
-  }
-
-  curConversation.value = key
-  chatMessages.value = messageHistory.value[key] || []
-}
-
-const onDeleteConversation = (key) => {
-  conversationItems.value = conversationItems.value.filter(
-    (item) => item.key !== key
-  )
-
-  if (key === curConversation.value) {
-    const newKey = conversationItems.value[0]?.key || ''
-    curConversation.value = newKey
-    chatMessages.value = messageHistory.value[newKey] || []
-  }
-
-  delete messageHistory.value[key]
+  messages.value = []
+  message.info('已清空对话')
 }
 
 const onPromptClick = (info) => {
@@ -610,23 +511,12 @@ const onPromptClick = (info) => {
 
 // ==================== Bubble items ====================
 const bubbleItems = computed(() => {
-  const items = chatMessages.value.map((msg, index) => ({
-    key: index.toString(),
+  return messages.value.map((msg, index) => ({
+    key: msg.messageId || index.toString(),
     role: msg.role,
     content: msg.content,
+    loading: msg.loading || false,
   }))
-
-  // 如果正在加载，添加一个loading消息
-  if (loading.value) {
-    items.push({
-      key: 'loading',
-      role: 'assistant',
-      content: '',
-      loading: true,
-    })
-  }
-
-  return items
 })
 
 const bubbleRoles = computed(() => ({
