@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "deviceId": "fdfc1d91b3399e2c23e3688974f92eb7018e4cc986e972a17f3e5b9f27c43f1b",
-  "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAd/WoAhW3fWQ5BTzt0gbdWPAQ6T01szAB7c135f38GaM=\n-----END PUBLIC KEY-----\n",
-  "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIFDCCbu00ma6kQQDFZqc9XO7OCnA0EZe996ZUGHa3u3r\n-----END PRIVATE KEY-----\n",
-  "createdAtMs": 1772785406536
+  "deviceId": "9536f40305ebd88ded9da7dc6c21bc0ddc85d51aaeb5ea1ce477d6cccc624c39",
+  "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAsC4VGYHIdvMLzXw8iW/3mUhiBT6sEwvP2cTcwS2dnL8=\n-----END PUBLIC KEY-----\n",
+  "privateKeyPem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIHyQimzLhTqPBFS5/BiGMcpR4aSioR8ZBo6nsrONPFXS\n-----END PRIVATE KEY-----\n",
+  "createdAtMs": 1773041684959
 }

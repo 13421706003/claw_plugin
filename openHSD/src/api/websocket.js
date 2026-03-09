@@ -1,22 +1,53 @@
 import { ref } from 'vue'
 
-const WS_URL = `ws://${window.location.host}/ws/web/user001`
-
 let ws = null
 let reconnectTimer = null
 let retryCount = 0
+let currentUserId = null  // 当前连接的 userId
 
 const isConnected = ref(false)
 
 /** 消息回调：(type, data) => void */
 let onMessage = null
 
+/**
+ * 从 localStorage / sessionStorage 读取当前登录用户 ID
+ */
+function getStoredUserId() {
+  try {
+    const raw = localStorage.getItem('openhsd_user') || sessionStorage.getItem('openhsd_user')
+    if (!raw) return null
+    const user = JSON.parse(raw)
+    return user?.userId ?? null
+  } catch {
+    return null
+  }
+}
+
+function buildWsUrl(userId) {
+  return `ws://${window.location.host}/ws/web/${userId}`
+}
+
 export function useWebSocket() {
   const connect = () => {
+    const userId = getStoredUserId()
+    if (!userId) {
+      console.warn('[WebWS] 未登录，跳过连接')
+      return
+    }
+
+    // 如果 userId 变了（切换账号），关闭旧连接
+    if (ws && currentUserId !== userId) {
+      ws.close()
+      ws = null
+    }
+
     if (ws && ws.readyState === WebSocket.OPEN) return
 
-    console.log(`[WebWS] 正在连接：${WS_URL}（第 ${retryCount} 次尝试）`)
-    ws = new WebSocket(WS_URL)
+    currentUserId = userId
+    const url = buildWsUrl(userId)
+    console.log(`[WebWS] 正在连接：${url}（第 ${retryCount} 次尝试）`)
+    ws = new WebSocket(url)
 
     ws.onopen = () => {
       console.log('[WebWS] 连接成功')
@@ -51,7 +82,10 @@ export function useWebSocket() {
       console.warn(`[WebWS] 连接关闭：code=${event.code}`)
       isConnected.value = false
       clearHeartbeat()
-      scheduleReconnect()
+      // 只有正常断开（非主动关闭）才重连
+      if (event.code !== 1000) {
+        scheduleReconnect()
+      }
     }
 
     ws.onerror = (error) => {
@@ -63,10 +97,11 @@ export function useWebSocket() {
     clearHeartbeat()
     clearReconnectTimer()
     if (ws) {
-      ws.close()
+      ws.close(1000, 'user logout')
       ws = null
     }
     isConnected.value = false
+    currentUserId = null
   }
 
   const send = (data) => {

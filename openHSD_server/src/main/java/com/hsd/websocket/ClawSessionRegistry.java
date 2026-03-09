@@ -44,7 +44,7 @@ public class ClawSessionRegistry {
     public void register(String userId, String clawId, WebSocketSession wsSession) {
         registry.computeIfAbsent(userId, k -> new ConcurrentHashMap<>())
                 .put(clawId, new ClawSession(clawId, wsSession));
-        log.info("[SessionRegistry] 注册：userId={}，clawId={}，当前在线机器数={}",
+        log.info("[ClawSessionRegistry] 注册：userId={}，clawId={}，当前在线机器数={}",
                 userId, clawId, getClawCount(userId));
     }
 
@@ -57,7 +57,7 @@ public class ClawSessionRegistry {
             ConcurrentHashMap<String, ClawSession> sessions = userEntry.getValue();
             sessions.entrySet().removeIf(e -> {
                 if (e.getValue().getWsSession().getId().equals(wsSession.getId())) {
-                    log.info("[SessionRegistry] 注销：userId={}，clawId={}", userId, e.getKey());
+                    log.info("[ClawSessionRegistry] 注销：userId={}，clawId={}", userId, e.getKey());
                     return true;
                 }
                 return false;
@@ -123,7 +123,7 @@ public class ClawSessionRegistry {
         ConcurrentHashMap<String, ClawSession> map = registry.get(userId);
         if (map != null && map.containsKey(clawId)) {
             map.get(clawId).setOpenClawDeviceId(deviceId);
-            log.info("[SessionRegistry] OpenClaw deviceId 已记录：userId={}，clawId={}，deviceId={}",
+            log.info("[ClawSessionRegistry] OpenClaw deviceId 已记录：userId={}，clawId={}，deviceId={}",
                     userId, clawId, deviceId);
         }
     }
@@ -147,7 +147,7 @@ public class ClawSessionRegistry {
     public boolean sendTo(String userId, String clawId, String jsonStr) {
         ClawSession cs = getSession(userId, clawId);
         if (cs == null || !cs.getWsSession().isOpen()) {
-            log.warn("[SessionRegistry] 发送失败：userId={}，clawId={} 不在线", userId, clawId);
+            log.warn("[ClawSessionRegistry] 发送失败：userId={}，clawId={} 不在线", userId, clawId);
             return false;
         }
         return doSend(cs.getWsSession(), jsonStr);
@@ -159,7 +159,7 @@ public class ClawSessionRegistry {
     public boolean sendToFirst(String userId, String jsonStr) {
         List<ClawSession> sessions = getSessions(userId);
         if (sessions.isEmpty()) {
-            log.warn("[SessionRegistry] 发送失败：userId={} 无在线插件", userId);
+            log.warn("[ClawSessionRegistry] 发送失败：userId={} 无在线插件", userId);
             return false;
         }
         return doSend(sessions.get(0).getWsSession(), jsonStr);
@@ -179,7 +179,7 @@ public class ClawSessionRegistry {
             }
             return true;
         } catch (IOException e) {
-            log.error("[SessionRegistry] 消息发送失败：sessionId={}，error={}", session.getId(), e.getMessage());
+            log.error("[ClawSessionRegistry] 消息发送失败：sessionId={}，error={}", session.getId(), e.getMessage());
             return false;
         }
     }

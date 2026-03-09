@@ -75,6 +75,11 @@ export class ClawClient {
     this._connect();
   }
 
+  /** 获取 OpenClaw 设备 ID（握手完成后可用） */
+  getDeviceId() {
+    return this.deviceIdentity?.deviceId ?? null;
+  }
+
   destroy() {
     this.destroyed = true;
     this._clearTimers();

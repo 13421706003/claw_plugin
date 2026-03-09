@@ -1,19 +1,26 @@
-import { readFileSync } from 'fs';
 import { WsClient }   from './ws/WsClient.js';
 import { ClawClient } from './ws/ClawClient.js';
+import { setupToken } from './setup.js';
 
 // ----------------------------------------------------------------
-// 加载配置
+// 加载配置（先询问是否更新 token）
 // ----------------------------------------------------------------
-const configPath = new URL('../cj.config.json', import.meta.url);
-const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+const config = await setupToken();
 
 const defaultSessionKey = config.openclaw.defaultSessionKey ?? 'main';
 
 // ----------------------------------------------------------------
-// 生成 clawId
+// 生成 clawId（基于持久化的 deviceId）
+// 先初始化 ClawClient 加载/生成 device identity，再读取 deviceId
 // ----------------------------------------------------------------
-const clawId = `claw_${process.env.COMPUTERNAME ?? 'local'}_${process.pid}`;
+
+// 临时初始化 ClawClient 以确保 .device-identity.json 存在
+const _tempClawClient = new ClawClient(config.openclaw);
+_tempClawClient._loadOrCreateDeviceIdentity();
+const deviceId = _tempClawClient.getDeviceId();
+
+const clawId = `claw_${deviceId.substring(0, 16)}`;
+
 console.log(`[openHSD] 启动，clawId=${clawId}`);
 console.log(`[openHSD] 云端地址：${config.cloud.wsUrl}`);
 console.log(`[openHSD] OpenClaw 地址：${config.openclaw.wsUrl}`);
@@ -32,12 +39,15 @@ function nextReqId() {
 }
 
 // ----------------------------------------------------------------
-// 连接 OpenClaw（本地）
+// 连接 OpenClaw（本地）：复用已初始化的 ClawClient 实例
 // ----------------------------------------------------------------
-const clawClient = new ClawClient(config.openclaw);
+const clawClient = _tempClawClient;
 
 clawClient.onOpen = () => {
-  console.log('[openHSD] OpenClaw 连接就绪');
+  const deviceId = clawClient.getDeviceId();
+  console.log(`[openHSD] OpenClaw 连接就绪，deviceId=${deviceId}`);
+  // 通知 WsClient，下次 sync 时携带 deviceId
+  wsClient.openClawDeviceId = deviceId;
 };
 
 clawClient.onClose = () => {

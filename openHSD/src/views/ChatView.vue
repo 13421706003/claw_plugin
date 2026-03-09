@@ -95,8 +95,152 @@
         </div>
 
         <div :style="layoutStyles.headerRight">
+          <Select
+            v-model:value="selectedClawId"
+            :options="clawOptions"
+            placeholder="选择设备"
+            style="width: 200px"
+            size="small"
+            @change="onClawChange"
+          >
+            <template #notFoundContent>
+              <span style="color: #999; padding: 8px">暂无在线设备</span>
+            </template>
+          </Select>
           <Badge :status="isConnected ? 'success' : 'error'" :text="isConnected ? '已连接' : '未连接'" />
           <span style="color: #999; font-size: 12px">版本 2026.3.6</span>
+
+          <!-- 用户信息按钮 -->
+          <div style="position: relative">
+            <Tooltip title="账号信息">
+              <div
+                @click="onToggleUserPanel"
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                  padding: 4px 10px;
+                  border-radius: 6px;
+                  cursor: pointer;
+                  border: 1px solid rgba(0,0,0,0.1);
+                  background: rgba(0,0,0,0.02);
+                  transition: all 0.2s;
+                "
+              >
+                <UserOutlined style="font-size: 13px; color: #666" />
+                <span style="font-size: 12px; color: #555; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                  {{ userStore.user?.username || 'user' }}
+                </span>
+              </div>
+            </Tooltip>
+
+            <!-- 下拉面板 -->
+            <div
+              v-if="showUserPanel"
+              style="
+                position: absolute;
+                top: calc(100% + 8px);
+                right: 0;
+                width: 320px;
+                background: #fff;
+                border-radius: 12px;
+                box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
+                z-index: 1000;
+                overflow: hidden;
+              "
+            >
+              <!-- 面板头部 -->
+              <div style="padding: 16px 16px 12px; border-bottom: 1px solid #f0f0f0">
+                <div style="display: flex; align-items: center; gap: 10px">
+                  <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #ff4d4f, #d9363e); display: flex; align-items: center; justify-content: center">
+                    <UserOutlined style="color: white; font-size: 16px" />
+                  </div>
+                  <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #1a1a1a">{{ userStore.user.value?.username }}</div>
+                    <div style="font-size: 11px; color: #999">userId: {{ userStore.user.value?.userId }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Token 区域 -->
+              <div style="padding: 14px 16px 0">
+                <div style="font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">
+                  连接 Token
+                </div>
+                <div style="background: #f6f6f6; border-radius: 8px; padding: 10px 12px; font-size: 11px; font-family: monospace; color: #333; word-break: break-all; line-height: 1.6; max-height: 72px; overflow-y: auto; border: 1px solid #eee;">
+                  {{ userStore.token }}
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 8px">
+                  <Button size="small" block :type="tokenCopied ? 'primary' : 'default'" @click="copyToken" style="font-size: 12px; border-radius: 6px">
+                    <template #icon><CopyOutlined /></template>
+                    {{ tokenCopied ? '已复制！' : '复制 Token' }}
+                  </Button>
+                </div>
+                <div style="margin-top: 8px; padding: 7px 10px; background: #fff7e6; border-radius: 6px; border: 1px solid #ffd591">
+                  <div style="font-size: 11px; color: #d46b08; line-height: 1.6">
+                    将此 Token 填入插件 <code style="background: #ffe7ba; padding: 1px 4px; border-radius: 3px">cj.config.json</code> → <code style="background: #ffe7ba; padding: 1px 4px; border-radius: 3px">cloud.token</code>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 在线机器列表 -->
+              <div style="padding: 12px 16px 0">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+                  <span style="font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px">
+                    在线机器
+                  </span>
+                  <span
+                    @click="fetchClawStatus"
+                    style="font-size: 11px; color: #1677ff; cursor: pointer"
+                  >
+                    {{ loadingStatus ? '刷新中...' : '刷新' }}
+                  </span>
+                </div>
+
+                <!-- 无机器 -->
+                <div v-if="clawList.length === 0" style="padding: 12px; background: #fafafa; border-radius: 8px; border: 1px dashed #e0e0e0; text-align: center">
+                  <div style="font-size: 12px; color: #bbb">暂无在线插件</div>
+                  <div style="font-size: 11px; color: #ccc; margin-top: 2px">请启动 openHSD 插件并填入 Token</div>
+                </div>
+
+                <!-- 机器列表 -->
+                <div v-for="claw in clawList" :key="claw.clawId" style="
+                  padding: 10px 12px;
+                  background: #f8fffe;
+                  border: 1px solid #d9f7be;
+                  border-radius: 8px;
+                  margin-bottom: 6px;
+                ">
+                  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px">
+                    <span style="width: 7px; height: 7px; border-radius: 50%; background: #52c41a; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(82,196,26,0.2)"></span>
+                    <span style="font-size: 12px; font-weight: 600; color: #1a1a1a; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                      {{ claw.clawId }}
+                    </span>
+                  </div>
+                  <div v-if="claw.openClawDeviceId" style="font-size: 10px; color: #888; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                    OpenClaw: {{ claw.openClawDeviceId.substring(0, 24) }}...
+                  </div>
+                  <div style="font-size: 10px; color: #aaa; margin-top: 2px">
+                    最后心跳：{{ formatHeartbeat(claw.lastHeartbeat) }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- 退出登录 -->
+              <div style="padding: 12px 16px 14px">
+                <Button danger block size="small" @click="onLogout" style="font-size: 12px; border-radius: 6px">
+                  退出登录
+                </Button>
+              </div>
+            </div>
+
+            <!-- 点击外部关闭 -->
+            <div
+              v-if="showUserPanel"
+              style="position: fixed; inset: 0; z-index: 999"
+              @click="showUserPanel = false; "
+            />
+          </div>
         </div>
       </div>
 
@@ -240,6 +384,7 @@
 
 <script setup>
 import { ref, computed, watch, h } from 'vue'
+import { marked } from 'marked'
 import {
   Bubble,
   Conversations,
@@ -295,7 +440,13 @@ import {
   ApiOutlined,
   RobotOutlined,
 } from '@ant-design/icons-vue'
-import { loading, messages, sendMessage, isConnected } from '../api/aiService.js'
+import { loading, messages, sendMessage, isConnected, connect, currentClawId, selectClaw, clearHistory } from '../api/aiService.js'
+import { useUserStore } from '../stores/user.js'
+import { useRouter } from 'vue-router'
+import { onMounted } from 'vue'
+
+const userStore = useUserStore()
+const router = useRouter()
 
 // ==================== State ====================
 const inputValue = ref('')
@@ -303,6 +454,80 @@ const attachmentsOpen = ref(false)
 const attachedFiles = ref([])
 const siderCollapsed = ref(false)
 const currentSession = ref('Main Session')
+const showUserPanel = ref(false)
+const tokenCopied = ref(false)
+const clawList = ref([])
+const loadingStatus = ref(false)
+const selectedClawId = ref(null)
+
+// 页面挂载后建立 WS 连接并加载设备列表
+onMounted(async () => {
+  connect()
+  await fetchClawStatus()
+  if (clawList.value.length > 0) {
+    selectedClawId.value = clawList.value[0].clawId
+    await selectClaw(clawList.value[0].clawId)
+  }
+})
+
+// ==================== 用户操作 ====================
+const copyToken = () => {
+  // computed ref 在 script 里需要 .value
+  navigator.clipboard.writeText(userStore.token.value).then(() => {
+    tokenCopied.value = true
+    setTimeout(() => { tokenCopied.value = false }, 2000)
+  })
+}
+
+const onLogout = () => {
+  userStore.logout()
+  router.push('/login')
+}
+
+// 查询在线机器列表
+const fetchClawStatus = async () => {
+  // computed ref 在 script 里需要 .value
+  const userId = userStore.user.value?.userId
+  if (!userId) return
+  loadingStatus.value = true
+  try {
+    const res = await fetch(`/api/claw/status?userId=${userId}`)
+    const data = await res.json()
+    clawList.value = data.clawList || []
+  } catch (e) {
+    console.error('[ChatView] 查询机器状态失败：', e)
+  } finally {
+    loadingStatus.value = false
+  }
+}
+
+// 切换设备
+const onClawChange = async (clawId) => {
+  selectedClawId.value = clawId
+  await selectClaw(clawId)
+}
+
+// 设备选项
+const clawOptions = computed(() => 
+  clawList.value.map(c => ({
+    value: c.clawId,
+    label: c.clawId
+  }))
+)
+
+// 打开面板时自动刷新机器列表
+const onToggleUserPanel = () => {
+  showUserPanel.value = !showUserPanel.value
+  if (showUserPanel.value) fetchClawStatus()
+}
+
+// 格式化最后心跳时间
+const formatHeartbeat = (ts) => {
+  if (!ts) return '未知'
+  const diff = Date.now() - ts
+  if (diff < 60000) return `${Math.floor(diff / 1000)}s 前`
+  return `${Math.floor(diff / 60000)}min 前`
+}
 
 // ==================== Theme ====================
 const { token } = theme.useToken()
@@ -500,8 +725,8 @@ const onSubmit = (val) => {
   inputValue.value = ''
 }
 
-const onCreateConversation = () => {
-  messages.value = []
+const onCreateConversation = async () => {
+  await clearHistory()
   message.info('已清空对话')
 }
 
@@ -523,6 +748,14 @@ const bubbleRoles = computed(() => ({
   assistant: {
     placement: 'start',
     typing: { step: 5, interval: 20 },
+    messageRender: (content) => {
+      if (!content) return null
+      const html = marked.parse(content.replace(/\r\n/g, '\n'), { breaks: false, gfm: true })
+      return h('div', { 
+        innerHTML: html,
+        class: 'markdown-body'
+      })
+    },
   },
   user: {
     placement: 'end',
@@ -539,5 +772,185 @@ const bubbleRoles = computed(() => ({
 
 :deep(.ant-prompts-list) {
   flex-wrap: wrap;
+}
+
+/* Markdown 样式 */
+.markdown-body {
+  font-size: 14px;
+  line-height: 1.65;
+  color: inherit;
+}
+
+/* 首个元素不留上边距 */
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+/* 标题：聊天气泡内层级清晰，字号拉开差距 */
+.markdown-body h1 {
+  font-size: 1.4em;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 14px 0 6px;
+  color: #1a1a1a;
+}
+
+.markdown-body h2 {
+  font-size: 1.2em;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 12px 0 5px;
+  color: #1a1a1a;
+}
+
+.markdown-body h3 {
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 10px 0 4px;
+  color: #333;
+  padding-left: 8px;
+  border-left: 3px solid #bbb;
+}
+
+.markdown-body h4 {
+  font-size: 0.93em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 8px 0 3px;
+  color: #444;
+}
+
+.markdown-body h5 {
+  font-size: 0.9em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 8px 0 3px;
+  color: #444;
+}
+
+.markdown-body h6 {
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 8px 0 3px;
+  color: #666;
+}
+
+/* 段落：紧凑间距 */
+.markdown-body p {
+  margin: 4px 0 6px;
+}
+
+/* 加粗：颜色加深，气泡内视觉更清晰 */
+.markdown-body strong {
+  font-weight: 700;
+  color: #111;
+}
+
+/* 列表 */
+.markdown-body ul,
+.markdown-body ol {
+  padding-left: 1.4em;
+  margin: 4px 0 6px;
+}
+
+.markdown-body li {
+  margin: 3px 0;
+  line-height: 1.6;
+}
+
+.markdown-body li > p {
+  margin: 0;
+}
+
+/* 分隔线：轻量化，减少视觉噪音 */
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid #ebebeb;
+  margin: 8px 0;
+}
+
+/* hr 紧跟标题时，消除双重 margin 叠加造成的大段空白 */
+.markdown-body hr + h1,
+.markdown-body hr + h2,
+.markdown-body hr + h3,
+.markdown-body hr + h4,
+.markdown-body hr + h5,
+.markdown-body hr + h6 {
+  margin-top: 4px;
+}
+
+/* 行内代码 */
+.markdown-body code {
+  background: #f0f0f0;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.88em;
+  color: #d56161;
+}
+
+/* 代码块 */
+.markdown-body pre {
+  background: #f6f8fa;
+  padding: 10px 14px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 6px 0;
+  border: 1px solid #eaecef;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+  color: inherit;
+}
+
+/* 引用块 */
+.markdown-body blockquote {
+  border-left: 3px solid #d0d0d0;
+  padding: 2px 0 2px 12px;
+  margin: 6px 0;
+  color: #666;
+}
+
+.markdown-body blockquote p {
+  margin: 0;
+}
+
+/* 表格 */
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  font-size: 0.93em;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid #e0e0e0;
+  padding: 6px 12px;
+  text-align: left;
+}
+
+.markdown-body th {
+  background: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+}
+
+.markdown-body tr:nth-child(even) td {
+  background: #fafafa;
+}
+
+/* 图片 */
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 4px;
 }
 </style>

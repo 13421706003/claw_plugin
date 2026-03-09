@@ -1,13 +1,16 @@
 import WebSocket from 'ws';
 
+// 认证失败的 WS 关闭码，不重连
+const AUTH_FAIL_CODES = new Set([4001, 4008, 1008]);
+
 /**
  * openHSD WebSocket 客户端
  *
  * 职责：
- * - 连接云端 /ws/claw，携带 token 完成身份认证
+ * - 连接云端 /ws/claw，携带 JWT token 完成身份认证
  * - 指数退避自动重连（1s → 2s → 4s → ... 上限 60s）
+ * - 认证失败（401/4008/1008）时停止重连，打印明确提示
  * - 每隔 heartbeatInterval 发送 ping，维持连接保活
- * - 对外暴露 onMessage 回调，供上层模块处理业务消息
  */
 export class WsClient {
   /**
@@ -15,16 +18,16 @@ export class WsClient {
    * @param {string} clawId  本机实例唯一标识
    */
   constructor(config, clawId) {
-    this.wsUrl            = config.wsUrl;
-    this.token            = config.token;
+    this.wsUrl             = config.wsUrl;
+    this.token             = config.token;
     this.heartbeatInterval = config.heartbeatInterval ?? 30000;
-    this.clawId           = clawId;
+    this.clawId            = clawId;
 
-    this.ws              = null;
-    this.retryCount      = 0;
-    this.retryTimer      = null;
-    this.heartbeatTimer  = null;
-    this.destroyed       = false;   // 手动关闭后不再重连
+    this.ws             = null;
+    this.retryCount     = 0;
+    this.retryTimer     = null;
+    this.heartbeatTimer = null;
+    this.destroyed      = false;
 
     /** 上层注册的业务消息回调：(parsedJson) => void */
     this.onMessage = null;
@@ -34,8 +37,26 @@ export class WsClient {
   // 公共接口
   // ----------------------------------------------------------------
 
-  /** 启动连接 */
+  /** 启动连接（先校验 token 是否存在） */
   connect() {
+    if (!this.token || this.token.trim() === '') {
+      console.error('');
+      console.error('╔══════════════════════════════════════════════════════╗');
+      console.error('║              openHSD Plugin 启动失败                  ║');
+      console.error('╠══════════════════════════════════════════════════════╣');
+      console.error('║  cloud.token 未配置！                                  ║');
+      console.error('║                                                        ║');
+      console.error('║  请按以下步骤操作：                                    ║');
+      console.error('║  1. 打开浏览器访问 openHSD 前端                        ║');
+      console.error('║  2. 登录账号后复制 JWT Token                           ║');
+      console.error('║  3. 将 Token 填入 cj.config.json 的                   ║');
+      console.error('║     cloud.token 字段                                   ║');
+      console.error('║  4. 重启插件                                            ║');
+      console.error('╚══════════════════════════════════════════════════════╝');
+      console.error('');
+      process.exit(1);
+    }
+
     this.destroyed = false;
     this._connect();
   }
@@ -58,7 +79,7 @@ export class WsClient {
    */
   send(data) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn('[WsClient] 发送失败：连接未就绪，数据将丢弃', data);
+      console.warn('[WsClient] 发送失败：连接未就绪，数据将丢弃');
       return false;
     }
     this.ws.send(JSON.stringify(data));
@@ -77,10 +98,10 @@ export class WsClient {
 
     this.ws = new WebSocket(url);
 
-    this.ws.on('open',    ()      => this._onOpen());
-    this.ws.on('message', (data)  => this._onMessage(data));
-    this.ws.on('close',   (code, reason) => this._onClose(code, reason));
-    this.ws.on('error',   (err)   => this._onError(err));
+    this.ws.on('open',    ()                  => this._onOpen());
+    this.ws.on('message', (data)              => this._onMessage(data));
+    this.ws.on('close',   (code, reason)      => this._onClose(code, reason));
+    this.ws.on('error',   (err)               => this._onError(err));
   }
 
   _onOpen() {
@@ -89,7 +110,12 @@ export class WsClient {
     this._startHeartbeat();
 
     // 重连成功后发送 sync，触发云端补偿积压消息
-    this.send({ type: 'sync', clawId: this.clawId });
+    // 携带 OpenClaw 的 deviceId，让后端知道是哪台机器
+    this.send({
+      type             : 'sync',
+      clawId           : this.clawId,
+      openClawDeviceId : this.openClawDeviceId ?? null,
+    });
   }
 
   _onMessage(raw) {
@@ -124,8 +150,25 @@ export class WsClient {
   }
 
   _onClose(code, reason) {
-    console.warn(`[WsClient] 连接关闭：code=${code}，reason=${reason?.toString()}`);
+    const reasonStr = reason?.toString() || '';
+    console.warn(`[WsClient] 连接关闭：code=${code}，reason=${reasonStr}`);
     this._clearTimers();
+
+    // 认证失败：不重连，打印明确错误
+    if (AUTH_FAIL_CODES.has(code)) {
+      console.error('');
+      console.error('╔══════════════════════════════════════════════════════╗');
+      console.error('║              Token 认证失败，停止重连                  ║');
+      console.error('╠══════════════════════════════════════════════════════╣');
+      console.error('║  可能原因：                                            ║');
+      console.error('║  1. cj.config.json 中的 token 已过期或不正确          ║');
+      console.error('║  2. 请重新登录前端获取新 token 后更新配置文件          ║');
+      console.error('╚══════════════════════════════════════════════════════╝');
+      console.error('');
+      this.destroyed = true;
+      return;
+    }
+
     this._scheduleRetry();
   }
 

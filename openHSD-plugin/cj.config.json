@@ -7,7 +7,7 @@
   },
   "cloud": {
     "wsUrl": "ws://localhost:9081/ws/claw",
-    "token": "dev_user001",
+    "token": "eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJvcGVuaHNkIiwic3ViIjoiMiIsInVzZXJuYW1lIjoidXNlcjEiLCJpYXQiOjE3NzMwNDg3NTV9.SxSjnsdbGYytG7m71tmMY2RCb2sm6_YBw-B6VIjCojU",
     "heartbeatInterval": 30000
   },
   "plugin": {

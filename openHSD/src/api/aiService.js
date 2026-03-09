@@ -2,26 +2,33 @@ import { ref } from 'vue'
 import { useWebSocket } from './websocket.js'
 
 const API_BASE = '/api'
-const USER_ID = 'user001'
 
 let msgCounter = 0
 const nextMessageId = () => `msg_${Date.now()}_${++msgCounter}`
 
 const loading = ref(false)
 const messages = ref([])
+const currentClawId = ref(null)
 
-// messageId -> 累积的 assistant 内容
 const pendingContent = new Map()
 
-// WebSocket 连接
 const { isConnected, connect, disconnect, setOnMessage } = useWebSocket()
 
-// 处理来自后端的 WS 消息
+function getStoredUserId() {
+  try {
+    const raw = localStorage.getItem('openhsd_user') || sessionStorage.getItem('openhsd_user')
+    if (!raw) return null
+    const user = JSON.parse(raw)
+    return user?.userId ?? null
+  } catch {
+    return null
+  }
+}
+
 setOnMessage((type, data) => {
   const { messageId, chunk, result, status } = data
 
   if (type === 'response_chunk') {
-    // chunk 是 OpenClaw 的 content block 数组: [{"type":"text","text":"..."}]
     const text = extractText(chunk)
     if (text) {
       pendingContent.set(messageId, text)
@@ -30,7 +37,6 @@ setOnMessage((type, data) => {
   }
 
   if (type === 'response') {
-    // 最终结果
     const text = extractText(result) || pendingContent.get(messageId) || ''
     updateAssistantMessage(messageId, text, true)
     pendingContent.delete(messageId)
@@ -38,18 +44,42 @@ setOnMessage((type, data) => {
   }
 })
 
-// 从 content block 数组中提取 text
 const extractText = (content) => {
   if (!content) return ''
-  if (typeof content === 'string') return content
-  if (Array.isArray(content)) {
-    const textBlock = content.find(b => b.type === 'text')
-    return textBlock?.text || ''
+  
+  if (typeof content === 'string') {
+    try {
+      const parsed = JSON.parse(content)
+      if (Array.isArray(parsed)) {
+        return parseContentBlocks(parsed)
+      }
+    } catch { }
+    return content
   }
+  
+  if (Array.isArray(content)) {
+    return parseContentBlocks(content)
+  }
+  
   return ''
 }
 
-// 更新或追加 assistant 消息
+const parseContentBlocks = (blocks) => {
+  return blocks.map(block => {
+    switch (block.type) {
+      case 'text':
+        return block.text || ''
+      case 'image':
+        const url = block.url || block.image?.url || ''
+        return url ? `![image](${url})` : ''
+      case 'code':
+        return `\`\`\`${block.language || ''}\n${block.text || ''}\n\`\`\``
+      default:
+        return block.text || ''
+    }
+  }).join('\n\n')
+}
+
 const updateAssistantMessage = (messageId, content, isFinal) => {
   const idx = messages.value.findIndex(m => m.messageId === messageId && m.role === 'assistant')
   if (idx >= 0) {
@@ -65,44 +95,87 @@ const updateAssistantMessage = (messageId, content, isFinal) => {
   }
 }
 
-// 发送消息
+const loadHistory = async (clawId) => {
+  const userId = getStoredUserId()
+  if (!userId || !clawId) {
+    messages.value = []
+    return
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/messages?userId=${userId}&clawId=${clawId}`)
+    const data = await res.json()
+    if (data.success && Array.isArray(data.messages)) {
+      messages.value = data.messages.map(m => ({
+        messageId: m.messageId,
+        role: m.role,
+        content: extractText(m.content),
+        loading: false
+      }))
+    } else {
+      messages.value = []
+    }
+  } catch (e) {
+    console.error('[aiService] 加载历史失败：', e)
+    messages.value = []
+  }
+}
+
+const clearHistory = async () => {
+  const userId = getStoredUserId()
+  if (!userId || !currentClawId.value) return
+
+  try {
+    await fetch(`${API_BASE}/messages?userId=${userId}&clawId=${currentClawId.value}`, {
+      method: 'DELETE'
+    })
+    messages.value = []
+  } catch (e) {
+    console.error('[aiService] 清空历史失败：', e)
+  }
+}
+
+const selectClaw = async (clawId) => {
+  if (currentClawId.value === clawId) return
+  currentClawId.value = clawId
+  await loadHistory(clawId)
+}
+
 const sendMessage = async (content) => {
   if (!content || loading.value) return
 
-  // 确保 WS 连接
+  const userId = getStoredUserId()
+  if (!userId) {
+    console.error('[aiService] 未登录，无法发送消息')
+    return
+  }
+
+  if (!currentClawId.value) {
+    console.error('[aiService] 未选择设备，无法发送消息')
+    return
+  }
+
   if (!isConnected.value) {
     connect()
-    await new Promise(resolve => setTimeout(resolve, 500))
+    await new Promise(resolve => setTimeout(resolve, 800))
   }
 
   loading.value = true
   const messageId = nextMessageId()
 
-  // 添加用户消息
-  messages.value.push({
-    messageId,
-    role: 'user',
-    content
-  })
-
-  // 初始化空 assistant 消息（loading 状态）
-  messages.value.push({
-    messageId,
-    role: 'assistant',
-    content: '',
-    loading: true
-  })
+  messages.value.push({ messageId, role: 'user', content })
+  messages.value.push({ messageId, role: 'assistant', content: '', loading: true })
   pendingContent.set(messageId, '')
 
-  // 发送到后端
   try {
     const res = await fetch(`${API_BASE}/claw/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId: USER_ID,
+        userId,
         messageId,
-        content
+        content,
+        clawId: currentClawId.value
       })
     })
 
@@ -118,13 +191,14 @@ const sendMessage = async (content) => {
   }
 }
 
-// 初始化连接
-connect()
-
 export {
   loading,
   messages,
+  currentClawId,
   sendMessage,
+  loadHistory,
+  clearHistory,
+  selectClaw,
   isConnected,
   connect,
   disconnect

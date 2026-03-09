@@ -2,6 +2,7 @@ package com.hsd.websocket;
 
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
+import com.hsd.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -11,22 +12,14 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import java.io.IOException;
 import java.time.Instant;
 
-/**
- * openHSD 插件的 WebSocket 核心 Handler
- * 路径：/ws/claw
- *
- * 职责：
- * 1. 连接建立 → 注册到 SessionRegistry
- * 2. 收到消息 → 根据 type 分发处理（ping / sync / response / response_chunk）
- * 3. 连接关闭 → 从 SessionRegistry 移除
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ClawWebSocketHandler extends TextWebSocketHandler {
 
-    private final SessionRegistry sessionRegistry;
-    private final WebSessionRegistry webSessionRegistry;
+    private final ClawSessionRegistry  clawSessionRegistry;
+    private final WebSessionRegistry   webSessionRegistry;
+    private final MessageService       messageService;
 
     // ----------------------------------------------------------------
     // 连接生命周期
@@ -35,29 +28,35 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         String userId = getUserId(session);
-        sessionRegistry.register(userId, session);
-        log.info("[ClawWS] 连接建立：userId={}，sessionId={}，当前在线数={}",
-                userId, session.getId(), sessionRegistry.onlineCount());
+        // clawId 在 sync 消息到来后才确定，先用 sessionId 占位
+        String tempClawId = "pending_" + session.getId();
+        session.getAttributes().put("clawId", tempClawId);
 
-        // 连接成功后，主动告知插件连接已就绪
-        sendJson(session, buildJson("type", "connected",
+        clawSessionRegistry.register(userId, tempClawId, session);
+        log.info("[ClawWS] 连接建立：userId={}，tempClawId={}，在线总数={}",
+                userId, tempClawId, clawSessionRegistry.totalOnlineCount());
+
+        sendJson(session, buildJson(
+                "type", "connected",
                 "userId", userId,
-                "serverTime", Instant.now().toEpochMilli()));
+                "serverTime", Instant.now().toEpochMilli()
+        ));
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        String userId = getUserId(session);
-        sessionRegistry.remove(userId);
-        log.info("[ClawWS] 连接关闭：userId={}，code={}，reason={}",
-                userId, status.getCode(), status.getReason());
+        String userId  = getUserId(session);
+        String clawId  = getClawId(session);
+        clawSessionRegistry.removeBySession(session);
+        log.info("[ClawWS] 连接关闭：userId={}，clawId={}，code={}",
+                userId, clawId, status.getCode());
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         String userId = getUserId(session);
         log.error("[ClawWS] 传输异常：userId={}，error={}", userId, exception.getMessage());
-        sessionRegistry.remove(userId);
+        clawSessionRegistry.removeBySession(session);
     }
 
     // ----------------------------------------------------------------
@@ -66,22 +65,19 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-        String userId = getUserId(session);
+        String userId  = getUserId(session);
         String payload = message.getPayload();
 
         JSONObject json;
         try {
             json = JSON.parseObject(payload);
         } catch (Exception e) {
-            log.warn("[ClawWS] 收到非 JSON 消息：userId={}，payload={}", userId, payload);
+            log.warn("[ClawWS] 非 JSON 消息：userId={}", userId);
             return;
         }
 
         String type = json.getString("type");
-        if (type == null) {
-            log.warn("[ClawWS] 消息缺少 type 字段：userId={}", userId);
-            return;
-        }
+        if (type == null) return;
 
         switch (type) {
             case "ping"           -> handlePing(session, userId, json);
@@ -93,79 +89,87 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
     }
 
     // ----------------------------------------------------------------
-    // 各类型消息处理
+    // 各类型处理
     // ----------------------------------------------------------------
 
-    /**
-     * 心跳 ping：回复 pong，记录最后心跳时间
-     */
     private void handlePing(WebSocketSession session, String userId, JSONObject json) {
         String clawId = json.getString("clawId");
-        log.debug("[ClawWS] ping 收到：userId={}，clawId={}", userId, clawId);
-
-        sendJson(session, buildJson(
-                "type", "pong",
-                "serverTime", Instant.now().toEpochMilli()
-        ));
+        clawSessionRegistry.updateHeartbeat(userId, clawId != null ? clawId : getClawId(session));
+        sendJson(session, buildJson("type", "pong", "serverTime", Instant.now().toEpochMilli()));
     }
 
     /**
-     * 重连同步：openHSD 重连后发送，云端批量重推 pending 消息
-     * TODO: 后续对接 MessageService，查询并重推 pending 消息
+     * sync：插件连接后发送，携带 clawId 和 openClawDeviceId
+     * 用于：1. 正式注册 clawId  2. 记录 OpenClaw 机器指纹  3. 重推 pending 消息
      */
     private void handleSync(WebSocketSession session, String userId, JSONObject json) {
-        String clawId = json.getString("clawId");
-        log.info("[ClawWS] sync 收到：userId={}，clawId={}，准备重推 pending 消息", userId, clawId);
+        String clawId           = json.getString("clawId");
+        String openClawDeviceId = json.getString("openClawDeviceId");
 
-        // TODO: messageService.getPendingMessages(userId) -> 逐条推送
-        // 当前阶段：回复 sync_ack 确认收到
+        if (clawId != null && !clawId.isBlank()) {
+            // 将占位 clawId 替换为真实 clawId
+            String tempClawId = getClawId(session);
+            if (!clawId.equals(tempClawId)) {
+                clawSessionRegistry.removeBySession(session);
+                clawSessionRegistry.register(userId, clawId, session);
+                session.getAttributes().put("clawId", clawId);
+            }
+        }
+
+        if (openClawDeviceId != null) {
+            clawSessionRegistry.setOpenClawDeviceId(userId, clawId != null ? clawId : getClawId(session), openClawDeviceId);
+        }
+
+        log.info("[ClawWS] sync：userId={}，clawId={}，openClawDeviceId={}，在线机器数={}",
+                userId, clawId, openClawDeviceId, clawSessionRegistry.getClawCount(userId));
+
         sendJson(session, buildJson(
-                "type", "sync_ack",
-                "userId", userId,
-                "pendingCount", 0,
-                "serverTime", Instant.now().toEpochMilli()
+                "type",             "sync_ack",
+                "userId",           userId,
+                "clawId",           clawId,
+                "openClawDeviceId", openClawDeviceId != null ? openClawDeviceId : "",
+                "pendingCount",     0,
+                "serverTime",       Instant.now().toEpochMilli()
         ));
     }
 
-    /**
-     * 执行结果（终态）：completed / error
-     * 插件在 OpenClaw 返回 final / error / aborted 后发送此消息
-     */
     private void handleResponse(WebSocketSession session, String userId, JSONObject json) {
         String messageId = json.getString("messageId");
         String status    = json.getString("status");
         String result    = json.getString("result");
+        String clawId    = getClawId(session);
 
-        log.info("[ClawWS] response 收到：userId={}，messageId={}，status={}", userId, messageId, status);
+        log.info("[ClawWS] response：userId={}，clawId={}，messageId={}，status={}", userId, clawId, messageId, status);
 
-        // 转发给前端
-        String jsonStr = buildJson(
-                "type", "response",
+        if (result != null && !"pending".equals(status)) {
+            try {
+                messageService.saveAssistantMessage(messageId, Long.parseLong(userId), clawId, result, status);
+            } catch (Exception e) {
+                log.error("[ClawWS] 保存助手消息失败：{}", e.getMessage());
+            }
+        }
+
+        webSessionRegistry.pushToUser(userId, buildJson(
+                "type",      "response",
                 "messageId", messageId,
-                "status", status,
-                "result", result
-        );
-        webSessionRegistry.pushToUser(userId, jsonStr);
+                "status",    status,
+                "result",    result
+        ));
     }
 
-    /**
-     * 流式响应 chunk（OpenClaw delta 事件转发过来的）
-     */
     private void handleResponseChunk(WebSocketSession session, String userId, JSONObject json) {
-        String messageId = json.getString("messageId");
-        String chunk     = json.getString("chunk");
-        Integer seq      = json.getInteger("seq");
+        String  messageId = json.getString("messageId");
+        String  chunk     = json.getString("chunk");
+        Integer seq       = json.getInteger("seq");
 
-        log.debug("[ClawWS] response_chunk 收到：userId={}，messageId={}，seq={}", userId, messageId, seq);
+        log.debug("[ClawWS] chunk：userId={}，messageId={}，seq={}", userId, messageId, seq);
 
-        // 转发给前端
-        String jsonStr = buildJson(
-                "type", "response_chunk",
+        webSessionRegistry.pushToUser(userId, buildJson(
+                "type",      "response_chunk",
                 "messageId", messageId,
-                "chunk", chunk,
-                "seq", seq
-        );
-        webSessionRegistry.pushToUser(userId, jsonStr);
+                "chunk",     chunk,
+                "seq",       seq
+        ));
     }
 
     // ----------------------------------------------------------------
@@ -173,35 +177,35 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
     // ----------------------------------------------------------------
 
     private String getUserId(WebSocketSession session) {
-        Object userId = session.getAttributes().get("userId");
-        return userId != null ? userId.toString() : "unknown";
+        Object v = session.getAttributes().get("userId");
+        return v != null ? v.toString() : "unknown";
+    }
+
+    private String getClawId(WebSocketSession session) {
+        Object v = session.getAttributes().get("clawId");
+        return v != null ? v.toString() : session.getId();
     }
 
     /**
-     * 对外暴露：供 Controller 等外部组件向指定 session 发送消息
+     * 对外暴露：向指定 session 发消息（供 Controller 调用）
      */
     public boolean sendToSession(WebSocketSession session, String jsonStr) {
         return sendJson(session, jsonStr);
     }
 
-    /**
-     * 发送 JSON 消息，返回是否成功
-     */
     private boolean sendJson(WebSocketSession session, String jsonStr) {
         if (!session.isOpen()) return false;
         try {
-            session.sendMessage(new TextMessage(jsonStr));
+            synchronized (session) {
+                session.sendMessage(new TextMessage(jsonStr));
+            }
             return true;
         } catch (IOException e) {
-            log.error("[ClawWS] 发送消息失败：sessionId={}，error={}", session.getId(), e.getMessage());
+            log.error("[ClawWS] 发送失败：sessionId={}，error={}", session.getId(), e.getMessage());
             return false;
         }
     }
 
-    /**
-     * 构建 JSON 字符串，参数为 key-value 交替传入
-     * buildJson("type", "pong", "serverTime", 123456L) -> {"type":"pong","serverTime":123456}
-     */
     private String buildJson(Object... kvPairs) {
         JSONObject obj = new JSONObject();
         for (int i = 0; i < kvPairs.length - 1; i += 2) {
