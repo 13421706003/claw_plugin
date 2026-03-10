@@ -30,8 +30,8 @@ console.log(`[openHSD] OpenClaw 地址：${config.openclaw.wsUrl}`);
 // reqMap:  reqId  → messageId  （发出请求后，等待 res 时用）
 // runMap:  runId  → messageId  （收到 res 后，匹配后续 event 用）
 // ----------------------------------------------------------------
-const reqMap = new Map();  // reqId  → messageId
-const runMap = new Map();  // runId  → messageId
+const reqMap   = new Map();  // reqId  → messageId
+const runMap   = new Map();  // runId  → messageId
 
 let reqCounter = 0;
 function nextReqId() {
@@ -108,12 +108,11 @@ clawClient.onMessage = (msg) => {
     }
 
     if (state === 'final') {
-      // 最终完成，转发完整结果并清理映射
       wsClient.send({
-        type      : 'response',
+        type       : 'response',
         messageId,
-        status    : 'completed',
-        result    : message?.content ?? '',
+        status     : 'completed',
+        result     : message?.content ?? '',
         attachments: message?.attachments ?? [],
       });
       console.log(`[openHSD] final 转发：messageId=${messageId}，完整回复=${message?.content ?? ''}`);
@@ -123,10 +122,10 @@ clawClient.onMessage = (msg) => {
 
     if (state === 'error') {
       wsClient.send({
-        type      : 'response',
+        type   : 'response',
         messageId,
-        status    : 'error',
-        result    : errorMessage ?? 'OpenClaw 执行出错',
+        status : 'error',
+        result : errorMessage ?? 'OpenClaw 执行出错',
       });
       console.error(`[openHSD] error 转发：messageId=${messageId}，error=${errorMessage}`);
       runMap.delete(runId);
@@ -135,10 +134,10 @@ clawClient.onMessage = (msg) => {
 
     if (state === 'aborted') {
       wsClient.send({
-        type      : 'response',
+        type   : 'response',
         messageId,
-        status    : 'error',
-        result    : '任务被中断',
+        status : 'error',
+        result : '任务被中断',
       });
       console.warn(`[openHSD] aborted 转发：messageId=${messageId}`);
       runMap.delete(runId);
@@ -150,7 +149,10 @@ clawClient.onMessage = (msg) => {
 clawClient.connect();
 
 // ----------------------------------------------------------------
-// 连接云端后端
+// 映射表
+// reqMap:    reqId  → messageId  （发出请求后，等待 res 时用）
+// runMap:    runId  → messageId  （收到 res 后，匹配后续 event 用）
+// tempFiles: reqId  → [filePaths] （请求结束后清理临时文件）
 // ----------------------------------------------------------------
 const wsClient = new WsClient(config.cloud, clawId);
 
@@ -162,13 +164,31 @@ wsClient.onMessage = (msg) => {
   console.log('[openHSD] 收到云端消息：', JSON.stringify(msg, null, 2));
 
   if (msg.type === 'request') {
-    const { messageId, content, context } = msg;
+    const { messageId, content, context, attachments } = msg;
 
     // OpenClaw 未连接时直接告知云端
     if (!clawClient.isConnected()) {
       console.warn('[openHSD] OpenClaw 未连接，无法处理消息 messageId=', messageId);
       wsClient.send({ type: 'response', messageId, status: 'error', result: 'OpenClaw 未连接' });
       return;
+    }
+
+    // 处理附件：Base64 → OpenClaw 格式 { type, mimeType, content }
+    const localAttachments = [];
+    if (Array.isArray(attachments) && attachments.length > 0) {
+      for (const att of attachments) {
+        if (att.type === 'image' && att.base64) {
+          const matches = att.base64.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+          if (matches) {
+            localAttachments.push({
+              type:     'image',
+              mimeType: matches[1],   // e.g. "image/jpeg"
+              content:  matches[2],   // 纯 Base64 数据（不含前缀）
+            });
+            console.log(`[openHSD] 附件已处理：mimeType=${matches[1]}，size=${matches[2].length} chars`);
+          }
+        }
+      }
     }
 
     // 构造符合 OpenClaw 协议的请求
@@ -184,12 +204,13 @@ wsClient.onMessage = (msg) => {
         sessionKey,
         message        : content,
         idempotencyKey,
-        ...(msg.timeout  ? { timeoutMs: msg.timeout } : {}),
-        ...(context?.thinking ? { thinking: context.thinking } : {}),
+        ...(msg.timeout            ? { timeoutMs: msg.timeout }           : {}),
+        ...(context?.thinking      ? { thinking: context.thinking }       : {}),
+        ...(localAttachments.length ? { attachments: localAttachments }   : {}),
       },
     };
 
-    // 存入 reqMap，等待 res 回来时建立 runId 映射
+    // 存入映射
     reqMap.set(reqId, messageId);
 
     const sent = clawClient.send(clawReq);
@@ -199,7 +220,7 @@ wsClient.onMessage = (msg) => {
       return;
     }
 
-    console.log(`[openHSD] 已转发至 OpenClaw：messageId=${messageId}，reqId=${reqId}，sessionKey=${sessionKey}`);
+    console.log(`[openHSD] 已转发至 OpenClaw：messageId=${messageId}，reqId=${reqId}，sessionKey=${sessionKey}，attachments=${localAttachments.length}`);
   }
 };
 

@@ -43,6 +43,25 @@ public class UserServiceImpl implements UserService {
         return result;
     }
 
+    @Override
+    public void register(String username, String password) {
+        if (username == null || username.trim().isEmpty()) {
+            throw new RuntimeException("用户名不能为空");
+        }
+        if (password == null || password.length() < 6) {
+            throw new RuntimeException("密码长度不能少于6位");
+        }
+
+        User existing = userMapper.findByUsername(username);
+        if (existing != null) {
+            throw new RuntimeException("用户名已存在");
+        }
+
+        String passwordHash = md5(password);
+        userMapper.insert(username, passwordHash);
+        log.info("[UserServiceImpl] 用户注册成功：username={}", username);
+    }
+
     private String md5(String input) {
         return DigestUtils.md5DigestAsHex(input.getBytes(StandardCharsets.UTF_8));
     }

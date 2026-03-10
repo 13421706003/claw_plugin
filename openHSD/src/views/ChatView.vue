@@ -359,6 +359,8 @@
             :loading="loading"
             :style="chatStyles.sender"
             placeholder="Message (Enter to send, Shift+Enter for line breaks, paste images)"
+            :header="attachments.length > 0 ? renderAttachmentHeader() : undefined"
+            :onPasteFile="onPasteFile"
           />
           <!-- 底部操作区 -->
           <div
@@ -404,6 +406,7 @@ import {
   Badge,
   Select,
   Tooltip,
+  Image,
 } from 'ant-design-vue'
 import {
   PlusOutlined,
@@ -459,6 +462,7 @@ const tokenCopied = ref(false)
 const clawList = ref([])
 const loadingStatus = ref(false)
 const selectedClawId = ref(null)
+const attachments = ref([])
 
 // 页面挂载后建立 WS 连接并加载设备列表
 onMounted(async () => {
@@ -716,13 +720,97 @@ const SENDER_PROMPTS = [
 
 // ==================== Methods ====================
 const onSubmit = (val) => {
-  if (!val) return
+  if (!val && attachments.value.length === 0) return
   if (loading.value) {
     message.error('请求正在进行中，请稍候...')
     return
   }
-  sendMessage(val)
+  sendMessage(val, attachments.value)
   inputValue.value = ''
+  attachments.value = []
+}
+
+// onPasteFile(firstFile, fileList) — ant-design-x-vue Sender 的回调签名
+const onPasteFile = (firstFile, fileList) => {
+  const files = fileList ?? [firstFile]
+  Array.from(files).forEach(file => {
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        attachments.value.push({
+          uid: Date.now() + '-' + Math.random().toString(36).slice(2),
+          name: file.name || 'image.png',
+          type: file.type,
+          base64: e.target.result,
+        })
+      }
+      reader.readAsDataURL(file)
+    }
+  })
+}
+
+const removeAttachment = (uid) => {
+  attachments.value = attachments.value.filter(a => a.uid !== uid)
+}
+
+const renderAttachmentHeader = () => {
+  return h('div', {
+    style: {
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '8px',
+      padding: '8px 12px',
+      background: '#fafafa',
+      borderRadius: '8px',
+      marginBottom: '8px',
+    }
+  }, attachments.value.map(att =>
+    h('div', {
+      key: att.uid,
+      style: {
+        position: 'relative',
+        width: '80px',
+        height: '80px',
+        borderRadius: '8px',
+        overflow: 'hidden',
+        border: '1px solid #e8e8e8',
+        flexShrink: 0,
+      }
+    }, [
+      h(Image, {
+        src: att.base64,
+        width: 80,
+        height: 80,
+        style: { objectFit: 'cover', display: 'block' },
+        preview: { src: att.base64 },
+      }),
+      h('button', {
+        onClick: (e) => {
+          e.stopPropagation()
+          removeAttachment(att.uid)
+        },
+        style: {
+          position: 'absolute',
+          top: '3px',
+          right: '3px',
+          width: '18px',
+          height: '18px',
+          borderRadius: '50%',
+          border: 'none',
+          background: 'rgba(0,0,0,0.55)',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '11px',
+          lineHeight: 1,
+          zIndex: 10,
+          padding: 0,
+        }
+      }, '×')
+    ])
+  ))
 }
 
 const onCreateConversation = async () => {
@@ -736,12 +824,24 @@ const onPromptClick = (info) => {
 
 // ==================== Bubble items ====================
 const bubbleItems = computed(() => {
-  return messages.value.map((msg, index) => ({
-    key: msg.messageId || index.toString(),
-    role: msg.role,
-    content: msg.content,
-    loading: msg.loading || false,
-  }))
+  return messages.value.map((msg, index) => {
+    let content = msg.content || ''
+    
+    // 如果有图片附件，拼接到 content 前面（Markdown 图片格式）
+    if (msg.attachments && msg.attachments.length > 0) {
+      const imageMarkdown = msg.attachments
+        .map(att => `![image](${att.base64})`)
+        .join('\n')
+      content = imageMarkdown + (content ? '\n\n' + content : '')
+    }
+    
+    return {
+      key: msg.messageId || index.toString(),
+      role: msg.role,
+      content,
+      loading: msg.loading || false,
+    }
+  })
 })
 
 const bubbleRoles = computed(() => ({
@@ -759,6 +859,53 @@ const bubbleRoles = computed(() => ({
   },
   user: {
     placement: 'end',
+    messageRender: (content) => {
+      if (!content) return null
+      
+      // 分离图片和文本
+      const imageRegex = /!\[image\]\((data:image[^)]+)\)/g
+      const images = []
+      let match
+      while ((match = imageRegex.exec(content)) !== null) {
+        images.push(match[1])
+      }
+      const textContent = content.replace(imageRegex, '').trim()
+      
+      const children = []
+      
+      // 渲染图片（小尺寸缩略图）
+      if (images.length > 0) {
+        const imgContainer = h('div', {
+          style: {
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '6px',
+            marginBottom: textContent ? '8px' : 0,
+          }
+        }, images.map((src, i) =>
+          h(Image, {
+            key: i,
+            src,
+            width: 120,
+            height: 120,
+            style: { 
+              borderRadius: '8px', 
+              objectFit: 'cover',
+              cursor: 'pointer'
+            },
+            preview: { src },
+          })
+        ))
+        children.push(imgContainer)
+      }
+      
+      // 渲染文本
+      if (textContent) {
+        children.push(h('div', textContent))
+      }
+      
+      return h('div', {}, children)
+    },
   },
 }))
 </script>
@@ -774,14 +921,41 @@ const bubbleRoles = computed(() => ({
   flex-wrap: wrap;
 }
 
-/* Markdown 样式 */
+/* 气泡容器：flex 子元素收缩，不撑破父级 */
+:deep(.ant-bubble-content-wrapper) {
+  min-width: 0;
+  max-width: calc(100% - 40px); /* 40px 为头像+gap 预留 */
+}
+
+/* 气泡内容区：只横向隐藏，纵向正常展开 */
+:deep(.ant-bubble-content),
+:deep(.ant-bubble-content-filled),
+:deep(.ant-bubble-content-outlined),
+:deep(.ant-bubble-content-borderless) {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: visible;
+  box-sizing: border-box;
+}
+
+</style>
+
+<!-- Markdown 样式：非 scoped，因为 innerHTML 注入的子元素没有 data-v 属性 -->
+<style>
 .markdown-body {
   font-size: 14px;
   line-height: 1.65;
   color: inherit;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-/* 首个元素不留上边距 */
 .markdown-body > *:first-child {
   margin-top: 0;
 }
@@ -789,7 +963,7 @@ const bubbleRoles = computed(() => ({
   margin-bottom: 0;
 }
 
-/* 标题：聊天气泡内层级清晰，字号拉开差距 */
+/* 标题 */
 .markdown-body h1 {
   font-size: 1.4em;
   font-weight: 700;
@@ -840,12 +1014,12 @@ const bubbleRoles = computed(() => ({
   color: #666;
 }
 
-/* 段落：紧凑间距 */
+/* 段落 */
 .markdown-body p {
   margin: 4px 0 6px;
 }
 
-/* 加粗：颜色加深，气泡内视觉更清晰 */
+/* 加粗 */
 .markdown-body strong {
   font-weight: 700;
   color: #111;
@@ -854,27 +1028,29 @@ const bubbleRoles = computed(() => ({
 /* 列表 */
 .markdown-body ul,
 .markdown-body ol {
-  padding-left: 1.4em;
+  padding-left: 1.6em;
   margin: 4px 0 6px;
+  box-sizing: border-box;
 }
 
 .markdown-body li {
   margin: 3px 0;
   line-height: 1.6;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .markdown-body li > p {
   margin: 0;
 }
 
-/* 分隔线：轻量化，减少视觉噪音 */
+/* 分隔线 */
 .markdown-body hr {
   border: none;
   border-top: 1px solid #ebebeb;
   margin: 8px 0;
 }
 
-/* hr 紧跟标题时，消除双重 margin 叠加造成的大段空白 */
 .markdown-body hr + h1,
 .markdown-body hr + h2,
 .markdown-body hr + h3,
@@ -927,15 +1103,21 @@ const bubbleRoles = computed(() => ({
 .markdown-body table {
   border-collapse: collapse;
   width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
   margin: 8px 0;
   font-size: 0.93em;
+  box-sizing: border-box;
 }
 
 .markdown-body th,
 .markdown-body td {
   border: 1px solid #e0e0e0;
-  padding: 6px 12px;
+  padding: 5px 10px;
   text-align: left;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 .markdown-body th {

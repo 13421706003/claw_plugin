@@ -1,0 +1,70 @@
+/**
+ * openHSD APP — 全局样式变量
+ */
+
+/* ===== openHSD 品牌色 ===== */
+$hsd-color-primary: #ff4d4f;
+$hsd-color-primary-dark: #d9363e;
+$hsd-color-primary-light: rgba(255, 77, 79, 0.12);
+$hsd-color-success: #52c41a;
+$hsd-color-warning: #faad14;
+$hsd-color-error: #ff4d4f;
+$hsd-color-link: #1677ff;
+
+$hsd-bg-page: #fafafa;
+$hsd-bg-card: #ffffff;
+$hsd-bg-input: rgba(0, 0, 0, 0.04);
+$hsd-text-primary: rgba(0, 0, 0, 0.88);
+$hsd-text-secondary: rgba(0, 0, 0, 0.55);
+$hsd-text-tertiary: rgba(0, 0, 0, 0.35);
+$hsd-text-placeholder: rgba(0, 0, 0, 0.25);
+$hsd-border-color: rgba(0, 0, 0, 0.1);
+
+/* ===== uni-app 内置变量 ===== */
+$uni-color-primary: #ff4d4f;
+$uni-color-success: #52c41a;
+$uni-color-warning: #faad14;
+$uni-color-error: #ff4d4f;
+
+$uni-text-color: #333;
+$uni-text-color-inverse: #fff;
+$uni-text-color-grey: #999;
+$uni-text-color-placeholder: #808080;
+$uni-text-color-disable: #c0c0c0;
+
+$uni-bg-color: #ffffff;
+$uni-bg-color-grey: #f8f8f8;
+$uni-bg-color-hover: #f1f1f1;
+$uni-bg-color-mask: rgba(0, 0, 0, 0.4);
+
+$uni-border-color: #e8e8e8;
+
+$uni-font-size-sm: 12px;
+$uni-font-size-base: 14px;
+$uni-font-size-lg: 16px;
+
+$uni-img-size-sm: 20px;
+$uni-img-size-base: 26px;
+$uni-img-size-lg: 40px;
+
+$uni-border-radius-sm: 4px;
+$uni-border-radius-base: 8px;
+$uni-border-radius-lg: 12px;
+$uni-border-radius-circle: 50%;
+
+$uni-spacing-row-sm: 5px;
+$uni-spacing-row-base: 10px;
+$uni-spacing-row-lg: 15px;
+
+$uni-spacing-col-sm: 4px;
+$uni-spacing-col-base: 8px;
+$uni-spacing-col-lg: 12px;
+
+$uni-opacity-disabled: 0.3;
+
+$uni-color-title: #1a1a1a;
+$uni-font-size-title: 20px;
+$uni-color-subtitle: #555555;
+$uni-font-size-subtitle: 16px;
+$uni-color-paragraph: #333333;
+$uni-font-size-paragraph: 14px;

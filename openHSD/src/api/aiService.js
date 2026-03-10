@@ -141,8 +141,8 @@ const selectClaw = async (clawId) => {
   await loadHistory(clawId)
 }
 
-const sendMessage = async (content) => {
-  if (!content || loading.value) return
+const sendMessage = async (content, attachments = []) => {
+  if ((!content && attachments.length === 0) || loading.value) return
 
   const userId = getStoredUserId()
   if (!userId) {
@@ -163,9 +163,15 @@ const sendMessage = async (content) => {
   loading.value = true
   const messageId = nextMessageId()
 
-  messages.value.push({ messageId, role: 'user', content })
+  messages.value.push({ messageId, role: 'user', content, attachments })
   messages.value.push({ messageId, role: 'assistant', content: '', loading: true })
   pendingContent.set(messageId, '')
+
+  const formattedAttachments = attachments.map(att => ({
+    type: 'image',
+    base64: att.base64,
+    name: att.name
+  }))
 
   try {
     const res = await fetch(`${API_BASE}/claw/send`, {
@@ -175,7 +181,8 @@ const sendMessage = async (content) => {
         userId,
         messageId,
         content,
-        clawId: currentClawId.value
+        clawId: currentClawId.value,
+        attachments: formattedAttachments
       })
     })
 

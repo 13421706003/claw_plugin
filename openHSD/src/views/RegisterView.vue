@@ -41,7 +41,7 @@
       <span class="deco-tag-text">openHSD v2026</span>
     </div>
 
-    <!-- 登录卡片 -->
+    <!-- 注册卡片 -->
     <div class="login-card" ref="cardRef">
 
       <!-- Logo 区 -->
@@ -63,8 +63,8 @@
 
       <!-- 标题 -->
       <div class="card-header">
-        <h1 class="card-title">欢迎回来</h1>
-        <p class="card-subtitle">请登录您的账号以继续使用</p>
+        <h1 class="card-title">创建账号</h1>
+        <p class="card-subtitle"> 注册一个新账号开始使用</p>
       </div>
 
       <!-- 错误提示 -->
@@ -84,7 +84,7 @@
       </transition>
 
       <!-- 表单 -->
-      <form class="login-form" @submit.prevent="onLogin">
+      <form class="login-form" @submit.prevent="onRegister">
 
         <!-- 用户名 -->
         <div class="field-group">
@@ -111,10 +111,7 @@
 
         <!-- 密码 -->
         <div class="field-group">
-          <label class="field-label">
-            密码
-            <a class="forgot-link" href="#">忘记密码？</a>
-          </label>
+          <label class="field-label">密码</label>
           <div class="field-wrap" :class="{ focused: focusedField === 'password', filled: formState.password }">
             <svg class="field-icon" width="15" height="15" viewBox="0 0 15 15" fill="none">
               <rect x="2.5" y="6.5" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
@@ -124,8 +121,8 @@
               v-model="formState.password"
               :type="showPassword ? 'text' : 'password'"
               class="field-input"
-              placeholder="请输入密码"
-              autocomplete="current-password"
+              placeholder="请输入密码（至少6位）"
+              autocomplete="new-password"
               @focus="focusedField = 'password'"
               @blur="focusedField = ''"
             />
@@ -144,30 +141,52 @@
           </transition>
         </div>
 
-        <!-- 记住我 -->
-        <label class="remember-row">
-          <div class="custom-checkbox" :class="{ checked: formState.remember }" @click="formState.remember = !formState.remember">
-            <svg v-if="formState.remember" width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path d="M1.5 5l2.5 2.5 5-5" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- 确认密码 -->
+        <div class="field-group">
+          <label class="field-label">确认密码</label>
+          <div class="field-wrap" :class="{ focused: focusedField === 'confirmPassword', filled: formState.confirmPassword }">
+            <svg class="field-icon" width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <rect x="2.5" y="6.5" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M5 6.5V4.5a2.5 2.5 0 015 0v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
             </svg>
+            <input
+              v-model="formState.confirmPassword"
+              :type="showConfirmPassword ? 'text' : 'password'"
+              class="field-input"
+              placeholder="请再次输入密码"
+              autocomplete="new-password"
+              @focus="focusedField = 'confirmPassword'"
+              @blur="focusedField = ''"
+            />
+            <button type="button" class="eye-btn" @click="showConfirmPassword = !showConfirmPassword" tabindex="-1">
+              <svg v-if="!showConfirmPassword" width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M1 7.5C1 7.5 3.5 3 7.5 3s6.5 4.5 6.5 4.5-2.5 4.5-6.5 4.5S1 7.5 1 7.5z" stroke="currentColor" stroke-width="1.2"/>
+                <circle cx="7.5" cy="7.5" r="1.8" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+              <svg v-else width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M2 2l11 11M6.3 5.1A4.5 4.5 0 0113 7.5s-1 1.8-2.8 3M5 4.5C3.2 5.6 2 7.5 2 7.5s2.5 4.5 5.5 4.5c1.1 0 2-.3 2.8-.8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+            </button>
           </div>
-          <span class="remember-text">保持登录状态</span>
-        </label>
+          <transition name="fade-slide">
+            <span v-if="errors.confirmPassword" class="field-error">{{ errors.confirmPassword }}</span>
+          </transition>
+        </div>
 
-        <!-- 登录按钮 -->
+        <!-- 注册按钮 -->
         <button
           type="submit"
           class="login-btn"
           :class="{ loading }"
           :disabled="loading"
         >
-          <span v-if="!loading" class="btn-text">登 录</span>
+          <span v-if="!loading" class="btn-text">注 册</span>
           <span v-else class="btn-loading">
             <svg class="spin" width="16" height="16" viewBox="0 0 16 16" fill="none">
               <circle cx="8" cy="8" r="6" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"/>
               <path d="M8 2a6 6 0 016 6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-            登录中
+            注册中
           </span>
         </button>
 
@@ -175,7 +194,7 @@
 
       <!-- 底部 -->
       <p class="card-footer">
-        还没有账号？<router-link class="register-link" to="/register">立即注册</router-link>
+        已有账号？<router-link class="register-link" to="/login">立即登录</router-link>
       </p>
 
     </div>
@@ -189,36 +208,51 @@
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { useUserStore } from '../stores/user.js'
 import gsap from 'gsap'
 
-const router    = useRouter()
-const userStore = useUserStore()
+const router = useRouter()
 
-const loading      = ref(false)
-const errorMsg     = ref('')
+const loading = ref(false)
+const errorMsg = ref('')
 const focusedField = ref('')
 const showPassword = ref(false)
-const cardRef      = ref(null)
+const showConfirmPassword = ref(false)
+const cardRef = ref(null)
 
-const formState = reactive({ username: '', password: '', remember: false })
-const errors    = reactive({ username: '', password: '' })
+const formState = reactive({ username: '', password: '', confirmPassword: '' })
+const errors = reactive({ username: '', password: '', confirmPassword: '' })
 
 const validate = () => {
   errors.username = formState.username.trim() ? '' : '请输入用户名'
-  errors.password = formState.password       ? '' : '请输入密码'
-  return !errors.username && !errors.password
+  errors.password = formState.password.length >= 6 ? '' : '密码长度不能少于6位'
+  errors.confirmPassword = formState.confirmPassword === formState.password ? '' : '两次输入的密码不一致'
+  return !errors.username && !errors.password && !errors.confirmPassword
 }
 
-const onLogin = async () => {
+const onRegister = async () => {
   if (!validate()) return
-  loading.value  = true
+  loading.value = true
   errorMsg.value = ''
   try {
-    await userStore.login(formState.username, formState.password, formState.remember)
-    router.push('/chat')
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: formState.username,
+        password: formState.password
+      })
+    })
+    const data = await res.json()
+    console.log('[Register] 响应状态：', res.status)
+    console.log('[Register] 响应数据：', data)
+    if (res.ok && data.success) {
+      router.push('/login')
+    } else {
+      errorMsg.value = data.message || '注册失败'
+    }
   } catch (e) {
-    errorMsg.value = e.message || '用户名或密码错误'
+    console.error('[Register] 错误：', e)
+    errorMsg.value = '网络错误，请重试'
   } finally {
     loading.value = false
   }
@@ -226,7 +260,7 @@ const onLogin = async () => {
 
 onMounted(() => {
   if (cardRef.value) {
-    gsap.fromTo(cardRef.value, 
+    gsap.fromTo(cardRef.value,
       { opacity: 0, y: 30, scale: 0.95 },
       { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: 'power2.out' }
     )
@@ -588,15 +622,6 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 
-.forgot-link {
-  font-size: 12.5px;
-  color: rgba(0, 0, 0, 0.4);
-  text-decoration: none;
-  font-weight: 400;
-  transition: color 0.15s;
-}
-.forgot-link:hover { color: rgba(0, 0, 0, 0.75); }
-
 /* 输入框容器 */
 .field-wrap {
   display: flex;
@@ -658,42 +683,6 @@ onBeforeUnmount(() => {
   color: rgba(255, 59, 48, 0.85);
   margin-top: 5px;
   margin-left: 2px;
-}
-
-/* ============================================================
-   记住我
-   ============================================================ */
-.remember-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  margin-bottom: 20px;
-  user-select: none;
-}
-
-.custom-checkbox {
-  width: 16px;
-  height: 16px;
-  border-radius: 4.5px;
-  border: 1.5px solid rgba(0, 0, 0, 0.2);
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-  flex-shrink: 0;
-}
-
-.custom-checkbox.checked {
-  background: rgba(0, 0, 0, 0.82);
-  border-color: transparent;
-}
-
-.remember-text {
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.5);
-  font-weight: 400;
 }
 
 /* ============================================================

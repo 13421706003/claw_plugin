@@ -91,8 +91,9 @@ public class ClawController {
         payload.put("type",      "request");
         payload.put("messageId", messageId);
         payload.put("content",   content);
-        if (body.containsKey("context")) payload.put("context", body.get("context"));
-        if (body.containsKey("timeout")) payload.put("timeout", body.get("timeout"));
+        if (body.containsKey("context"))     payload.put("context",     body.get("context"));
+        if (body.containsKey("timeout"))     payload.put("timeout",     body.get("timeout"));
+        if (body.containsKey("attachments")) payload.put("attachments", body.get("attachments"));
 
         ClawSessionRegistry.ClawSession cs = clawSessionRegistry.getSession(userId, clawId);
         if (cs == null || !cs.getWsSession().isOpen()) {
