@@ -4,7 +4,8 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? '/hsdclaw/' : '/',
   plugins: [
     vue(),
     vueDevTools(),
@@ -18,13 +19,14 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://192.168.110.129:9081',
+        target: 'http://localhost:9081',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://192.168.110.129:9081',
+        target: 'ws://localhost:9081',
         ws: true,
+        changeOrigin: true,
       },
     },
   },
-})
+}))

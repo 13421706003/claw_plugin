@@ -4,9 +4,11 @@ server:
 spring:
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/openhsd?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+#    url: jdbc:mysql://localhost:3306/openhsd?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://8.134.221.22:3306/openhsd?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
     username: root
-    password: Cend123...
+#    password: Cend123...
+    password: huashidai123
     type: com.alibaba.druid.pool.DruidDataSource
 
 mybatis:
@@ -19,4 +21,12 @@ jwt:
   secret: openhsd-gateway-jwt-secret-key-2026-make-it-long-enough-256bit
   issuer: openhsd
 
+minio:
+  endpoint: http://huashidai1.com:9000
+  access-key: aibox
+  secret-key: aiboxminio
+  bucket-name: aiworkbox-images
+  url-expiry: 604800
+  external-url: https://www.huashidai1.com/oss
+  presign-base-path: /oss
 

@@ -25,7 +25,9 @@ function getStoredUserId() {
 }
 
 function buildWsUrl(userId) {
-  return `ws://${window.location.host}/ws/web/${userId}`
+  const wsBase = import.meta.env.VITE_WS_BASE
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}${wsBase}/web/${userId}`
 }
 
 export function useWebSocket() {

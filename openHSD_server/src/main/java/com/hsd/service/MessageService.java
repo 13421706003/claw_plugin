@@ -8,7 +8,10 @@ public interface MessageService {
 
     List<Message> getHistory(Long userId, String clawId);
 
-    void saveUserMessage(String messageId, Long userId, String clawId, String content);
+    /**
+     * @param attachmentsJson 附件 JSON 字符串（objectKey 数组），无附件传 null
+     */
+    void saveUserMessage(String messageId, Long userId, String clawId, String content, String attachmentsJson);
 
     void saveAssistantMessage(String messageId, Long userId, String clawId, String content, String status);
 

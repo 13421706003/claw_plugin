@@ -490,12 +490,12 @@ const onLogout = () => {
 
 // 查询在线机器列表
 const fetchClawStatus = async () => {
-  // computed ref 在 script 里需要 .value
   const userId = userStore.user.value?.userId
   if (!userId) return
   loadingStatus.value = true
   try {
-    const res = await fetch(`/api/claw/status?userId=${userId}`)
+    const apiBase = import.meta.env.VITE_API_BASE
+    const res = await fetch(`${apiBase}/claw/status?userId=${userId}`)
     const data = await res.json()
     clawList.value = data.clawList || []
   } catch (e) {
@@ -862,8 +862,8 @@ const bubbleRoles = computed(() => ({
     messageRender: (content) => {
       if (!content) return null
       
-      // 分离图片和文本
-      const imageRegex = /!\[image\]\((data:image[^)]+)\)/g
+      // 分离图片和文本（兼容 base64 DataURL 和 MinIO 预签名 URL 两种格式）
+      const imageRegex = /!\[image\]\(([^)]+)\)/g
       const images = []
       let match
       while ((match = imageRegex.exec(content)) !== null) {

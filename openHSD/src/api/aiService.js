@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { useWebSocket } from './websocket.js'
 
-const API_BASE = '/api'
+const API_BASE = import.meta.env.VITE_API_BASE
 
 let msgCounter = 0
 const nextMessageId = () => `msg_${Date.now()}_${++msgCounter}`
@@ -106,12 +106,30 @@ const loadHistory = async (clawId) => {
     const res = await fetch(`${API_BASE}/messages?userId=${userId}&clawId=${clawId}`)
     const data = await res.json()
     if (data.success && Array.isArray(data.messages)) {
-      messages.value = data.messages.map(m => ({
-        messageId: m.messageId,
-        role: m.role,
-        content: extractText(m.content),
-        loading: false
-      }))
+      messages.value = data.messages.map(m => {
+        // 解析历史消息中的附件（后端已将 objectKey 替换为预签名 URL）
+        let attachments = []
+        if (m.attachments) {
+          try {
+            const parsed = JSON.parse(m.attachments)
+            if (Array.isArray(parsed)) {
+              // 历史消息图片 url 是 MinIO 预签名 URL，统一映射到 base64 字段供渲染复用
+              attachments = parsed
+                .filter(a => a.url)
+                .map(a => ({ uid: a.objectKey, name: a.name, type: a.type, base64: a.url }))
+            }
+          } catch (e) {
+            console.warn('[aiService] 附件解析失败：', e)
+          }
+        }
+        return {
+          messageId: m.messageId,
+          role: m.role,
+          content: extractText(m.content),
+          attachments,
+          loading: false
+        }
+      })
     } else {
       messages.value = []
     }

@@ -8,13 +8,13 @@ import java.util.List;
 @Mapper
 public interface MessageMapper {
 
-    @Select("SELECT id, message_id, user_id, claw_id, role, content, status, created_at " +
+    @Select("SELECT id, message_id, user_id, claw_id, role, content, attachments, status, created_at " +
             "FROM messages WHERE user_id = #{userId} AND claw_id = #{clawId} " +
             "ORDER BY created_at ASC")
     List<Message> findByUserIdAndClawId(@Param("userId") Long userId, @Param("clawId") String clawId);
 
-    @Insert("INSERT INTO messages (message_id, user_id, claw_id, role, content, status, created_at) " +
-            "VALUES (#{messageId}, #{userId}, #{clawId}, #{role}, #{content}, #{status}, NOW())")
+    @Insert("INSERT INTO messages (message_id, user_id, claw_id, role, content, attachments, status, created_at) " +
+            "VALUES (#{messageId}, #{userId}, #{clawId}, #{role}, #{content}, #{attachments}, #{status}, NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(Message message);
 

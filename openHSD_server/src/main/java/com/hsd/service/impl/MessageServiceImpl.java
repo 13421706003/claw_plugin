@@ -22,16 +22,18 @@ public class MessageServiceImpl implements MessageService {
     }
 
     @Override
-    public void saveUserMessage(String messageId, Long userId, String clawId, String content) {
+    public void saveUserMessage(String messageId, Long userId, String clawId, String content, String attachmentsJson) {
         Message msg = new Message();
         msg.setMessageId(messageId);
         msg.setUserId(userId);
         msg.setClawId(clawId);
         msg.setRole("user");
         msg.setContent(content);
+        msg.setAttachments(attachmentsJson);
         msg.setStatus("completed");
         messageMapper.insert(msg);
-        log.info("[MessageServiceImpl] 保存用户消息：messageId={}, userId={}, clawId={}", messageId, userId, clawId);
+        log.info("[MessageServiceImpl] 保存用户消息：messageId={}, userId={}, clawId={}, hasAttachments={}",
+                messageId, userId, clawId, attachmentsJson != null);
     }
 
     @Override

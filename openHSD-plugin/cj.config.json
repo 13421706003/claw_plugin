@@ -1,17 +1,5 @@
 {
-  "openclaw": {
-    "baseUrl": "http://localhost:8000",
-    "apiPath": "/api/v1",
-    "wsUrl": "ws://localhost:18789",
-    "defaultSessionKey": "main"
-  },
   "cloud": {
-    "wsUrl": "ws://localhost:9081/ws/claw",
-    "token": "eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJvcGVuaHNkIiwic3ViIjoiMiIsInVzZXJuYW1lIjoidXNlcjEiLCJpYXQiOjE3NzMwNDg3NTV9.SxSjnsdbGYytG7m71tmMY2RCb2sm6_YBw-B6VIjCojU",
-    "heartbeatInterval": 30000
-  },
-  "plugin": {
-    "requestTimeout": 30000,
-    "maxQueueSize": 1000
+    "token": "eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJvcGVuaHNkIiwic3ViIjoiMiIsInVzZXJuYW1lIjoidXNlcjEiLCJpYXQiOjE3NzMzMDgyNzh9.sS2RTIthbDgJxihairsgXE6CqXOo3xx4kvOLOVI8dsk"
   }
 }

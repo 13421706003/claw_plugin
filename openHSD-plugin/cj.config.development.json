@@ -1,0 +1,16 @@
+{
+  "openclaw": {
+    "baseUrl": "http://localhost:8000",
+    "apiPath": "/api/v1",
+    "wsUrl": "ws://localhost:18789",
+    "defaultSessionKey": "main"
+  },
+  "cloud": {
+    "wsUrl": "ws://localhost:9081/ws/claw",
+    "heartbeatInterval": 30000
+  },
+  "plugin": {
+    "requestTimeout": 30000,
+    "maxQueueSize": 1000
+  }
+}

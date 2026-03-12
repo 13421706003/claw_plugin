@@ -1,10 +1,47 @@
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { createInterface } from 'readline';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const configPath = path.join(__dirname, '../cj.config.json');
+const configDir = path.join(__dirname, '..');
+
+/**
+ * 根据环境加载配置文件
+ * NODE_ENV=development → cj.config.development.json
+ * NODE_ENV=production  → cj.config.production.json
+ * 默认：production
+ */
+export function loadConfig() {
+  const env = process.env.NODE_ENV || 'production';
+  const envConfigPath = path.join(configDir, `cj.config.${env}.json`);
+  const tokenConfigPath = path.join(configDir, 'cj.config.json');
+
+  // 加载环境配置
+  if (!existsSync(envConfigPath)) {
+    console.error(`[openHSD] 配置文件不存在：${envConfigPath}`);
+    process.exit(1);
+  }
+  const envConfig = JSON.parse(readFileSync(envConfigPath, 'utf-8'));
+
+  // 加载 token 配置（如果存在）
+  let tokenConfig = { cloud: { token: '' } };
+  if (existsSync(tokenConfigPath)) {
+    tokenConfig = JSON.parse(readFileSync(tokenConfigPath, 'utf-8'));
+  }
+
+  // 合并配置：环境配置 + token
+  const mergedConfig = {
+    ...envConfig,
+    cloud: {
+      ...envConfig.cloud,
+      token: tokenConfig.cloud?.token || ''
+    }
+  };
+
+  console.log(`[openHSD] 已加载 ${env} 环境配置`);
+  return mergedConfig;
+}
 
 /**
  * 启动前询问用户是否更新 token
@@ -12,7 +49,7 @@ const configPath = path.join(__dirname, '../cj.config.json');
  * - no  → 使用现有值
  */
 export async function setupToken() {
-  const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+  const config = loadConfig();
   const currentToken = config.cloud?.token || '';
 
   const rl = createInterface({
@@ -45,7 +82,9 @@ export async function setupToken() {
       console.log('  Token 为空，取消更新，使用原有值。');
     } else {
       config.cloud.token = newToken;
-      writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      const tokenConfigPath = path.join(configDir, 'cj.config.json');
+      const tokenConfig = { cloud: { token: newToken } };
+      writeFileSync(tokenConfigPath, JSON.stringify(tokenConfig, null, 2) + '\n', 'utf-8');
       console.log('  Token 已保存到 cj.config.json');
     }
   } else {
@@ -62,6 +101,5 @@ export async function setupToken() {
   console.log('');
   rl.close();
 
-  // 重新读取最新配置并返回
-  return JSON.parse(readFileSync(configPath, 'utf-8'));
+  return config;
 }

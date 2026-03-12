@@ -234,7 +234,8 @@ const onRegister = async () => {
   loading.value = true
   errorMsg.value = ''
   try {
-    const res = await fetch('/api/auth/register', {
+    const apiBase = import.meta.env.VITE_API_BASE
+    const res = await fetch(`${apiBase}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

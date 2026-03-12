@@ -1,6 +1,6 @@
 import { WsClient }   from './ws/WsClient.js';
 import { ClawClient } from './ws/ClawClient.js';
-import { setupToken } from './setup.js';
+import { setupToken, loadConfig } from './setup.js';
 
 // ----------------------------------------------------------------
 // 加载配置（先询问是否更新 token）
