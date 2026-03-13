@@ -10,6 +10,9 @@ const loading = ref(false)
 const messages = ref([])
 const currentClawId = ref(null)
 
+/** 广播模式下，记录有多少台设备还在回复中 */
+let pendingBroadcastCount = 0
+
 const pendingContent = new Map()
 
 const { isConnected, connect, disconnect, setOnMessage } = useWebSocket()
@@ -40,7 +43,17 @@ setOnMessage((type, data) => {
     const text = extractText(result) || pendingContent.get(messageId) || ''
     updateAssistantMessage(messageId, text, true)
     pendingContent.delete(messageId)
-    loading.value = false
+
+    // 广播模式：等所有设备都回复完才解除 loading
+    if (pendingBroadcastCount > 0) {
+      pendingBroadcastCount--
+      if (pendingBroadcastCount <= 0) {
+        pendingBroadcastCount = 0
+        loading.value = false
+      }
+    } else {
+      loading.value = false
+    }
   }
 })
 
@@ -107,13 +120,13 @@ const loadHistory = async (clawId) => {
     const data = await res.json()
     if (data.success && Array.isArray(data.messages)) {
       messages.value = data.messages.map(m => {
-        // 解析历史消息中的附件（后端已将 objectKey 替换为预签名 URL）
+        // 解析历史消息中的附件（后端已将 objectKey 替换为公开 URL）
         let attachments = []
         if (m.attachments) {
           try {
             const parsed = JSON.parse(m.attachments)
             if (Array.isArray(parsed)) {
-              // 历史消息图片 url 是 MinIO 预签名 URL，统一映射到 base64 字段供渲染复用
+              // 历史消息图片 url 是 MinIO 公开 URL，统一映射到 base64 字段供渲染复用
               attachments = parsed
                 .filter(a => a.url)
                 .map(a => ({ uid: a.objectKey, name: a.name, type: a.type, base64: a.url }))
@@ -156,10 +169,15 @@ const clearHistory = async () => {
 const selectClaw = async (clawId) => {
   if (currentClawId.value === clawId) return
   currentClawId.value = clawId
+  // 广播模式不加载历史
+  if (clawId === '__ALL__') {
+    messages.value = []
+    return
+  }
   await loadHistory(clawId)
 }
 
-const sendMessage = async (content, attachments = []) => {
+const sendMessage = async (content, attachments = [], clawList = []) => {
   if ((!content && attachments.length === 0) || loading.value) return
 
   const userId = getStoredUserId()
@@ -178,6 +196,13 @@ const sendMessage = async (content, attachments = []) => {
     await new Promise(resolve => setTimeout(resolve, 800))
   }
 
+  // 广播模式
+  if (currentClawId.value === '__ALL__') {
+    await sendBroadcast(userId, content, attachments, clawList)
+    return
+  }
+
+  // 单设备模式
   loading.value = true
   const messageId = nextMessageId()
 
@@ -212,6 +237,69 @@ const sendMessage = async (content, attachments = []) => {
   } catch (e) {
     console.error('[aiService] 发送失败：', e)
     updateAssistantMessage(messageId, '网络错误，请重试', true)
+    loading.value = false
+  }
+}
+
+/**
+ * 广播模式：向所有在线设备发送消息
+ */
+const sendBroadcast = async (userId, content, attachments, clawList) => {
+  loading.value = true
+  const messageId = nextMessageId()
+
+  // 推入用户消息
+  messages.value.push({ messageId, role: 'user', content, attachments })
+
+  const formattedAttachments = attachments.map(att => ({
+    type: 'image',
+    base64: att.base64,
+    name: att.name
+  }))
+
+  try {
+    const res = await fetch(`${API_BASE}/claw/broadcast`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        messageId,
+        content,
+        attachments: formattedAttachments
+      })
+    })
+
+    const data = await res.json()
+
+    if (!data.success) {
+      messages.value.push({ messageId, role: 'assistant', content: data.message || '广播失败', loading: false })
+      loading.value = false
+      return
+    }
+
+    // 为每台成功发送的设备创建 assistant 占位消息
+    const sentClawIds = data.sentClawIds || []
+    const sentMessageIds = data.sentMessageIds || []
+    pendingBroadcastCount = sentClawIds.length
+
+    sentClawIds.forEach((clawId, i) => {
+      const subMsgId = sentMessageIds[i] || `${messageId}_${clawId}`
+      messages.value.push({
+        messageId: subMsgId,
+        role: 'assistant',
+        content: '',
+        loading: true,
+        clawId   // 标记来源设备
+      })
+      pendingContent.set(subMsgId, '')
+    })
+
+    if (sentClawIds.length === 0) {
+      loading.value = false
+    }
+  } catch (e) {
+    console.error('[aiService] 广播失败：', e)
+    messages.value.push({ messageId, role: 'assistant', content: '网络错误，请重试', loading: false })
     loading.value = false
   }
 }

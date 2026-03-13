@@ -511,13 +511,17 @@ const onClawChange = async (clawId) => {
   await selectClaw(clawId)
 }
 
-// 设备选项
-const clawOptions = computed(() => 
-  clawList.value.map(c => ({
+// 设备选项（2台以上在线时显示「全部设备」）
+const clawOptions = computed(() => {
+  const options = clawList.value.map(c => ({
     value: c.clawId,
     label: c.clawId
   }))
-)
+  if (options.length > 1) {
+    options.unshift({ value: '__ALL__', label: '全部设备' })
+  }
+  return options
+})
 
 // 打开面板时自动刷新机器列表
 const onToggleUserPanel = () => {
@@ -725,7 +729,7 @@ const onSubmit = (val) => {
     message.error('请求正在进行中，请稍候...')
     return
   }
-  sendMessage(val, attachments.value)
+  sendMessage(val, attachments.value, clawList.value)
   inputValue.value = ''
   attachments.value = []
 }
@@ -835,6 +839,11 @@ const bubbleItems = computed(() => {
       content = imageMarkdown + (content ? '\n\n' + content : '')
     }
     
+    // 广播模式下，在 content 前面注入设备标识，格式：<!--claw:xxx-->
+    if (msg.clawId && msg.role === 'assistant') {
+      content = `<!--claw:${msg.clawId}-->${content}`
+    }
+
     return {
       key: msg.messageId || index.toString(),
       role: msg.role,
@@ -850,11 +859,39 @@ const bubbleRoles = computed(() => ({
     typing: { step: 5, interval: 20 },
     messageRender: (content) => {
       if (!content) return null
-      const html = marked.parse(content.replace(/\r\n/g, '\n'), { breaks: false, gfm: true })
-      return h('div', { 
-        innerHTML: html,
-        class: 'markdown-body'
-      })
+
+      const children = []
+
+      // 解析广播模式的设备标识 <!--claw:xxx-->
+      let actualContent = content
+      const clawMatch = content.match(/^<!--claw:([^>]+)-->/)
+      if (clawMatch) {
+        const clawId = clawMatch[1]
+        actualContent = content.replace(clawMatch[0], '')
+        children.push(h('div', {
+          style: {
+            fontSize: '11px',
+            color: '#1677ff',
+            background: '#e6f4ff',
+            border: '1px solid #91caff',
+            borderRadius: '4px',
+            padding: '1px 6px',
+            marginBottom: '6px',
+            display: 'inline-block',
+            fontFamily: 'monospace',
+          }
+        }, clawId))
+      }
+
+      if (actualContent) {
+        const html = marked.parse(actualContent.replace(/\r\n/g, '\n'), { breaks: false, gfm: true })
+        children.push(h('div', { 
+          innerHTML: html,
+          class: 'markdown-body'
+        }))
+      }
+
+      return children.length > 0 ? h('div', {}, children) : null
     },
   },
   user: {

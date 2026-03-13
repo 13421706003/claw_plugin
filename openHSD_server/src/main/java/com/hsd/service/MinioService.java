@@ -1,18 +1,14 @@
 package com.hsd.service;
 
 import com.hsd.config.MinioProperties;
-import com.hsd.dto.AttachmentDTO;
-import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
-import io.minio.http.Method;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.util.Base64;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -74,37 +70,21 @@ public class MinioService {
     }
 
     /**
-     * 根据 objectKey 生成预签名访问 URL（外网地址）
+     * 根据 objectKey 拼接公开访问 URL
+     * bucket 需在 MinIO 控制台设为 public read
+     *
+     * 格式：{externalUrl}/{bucketName}/{objectKey}
+     * 例如：https://www.huashidai1.com/oss/aiworkbox-images/hsdclaw/2/claw_xxx/msg_xxx/123_0.jpg
      *
      * @param objectKey MinIO 对象路径
-     * @return 外网可访问的预签名 URL
+     * @return 公开访问 URL
      */
     public String presignUrl(String objectKey) {
-        try {
-            String rawUrl = minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .method(Method.GET)
-                            .bucket(minioProperties.getBucketName())
-                            .object(objectKey)
-                            .expiry(minioProperties.getUrlExpiry(), TimeUnit.SECONDS)
-                            .build()
-            );
-
-            // 将内网 endpoint 替换为外网 external-url
-            // 例如: http://huashidai1.com:9000/aiworkbox-images/1/claw/... 
-            //   →   https://www.huashidai1.com/oss/aiworkbox-images/1/claw/...
-            String externalUrl = minioProperties.getExternalUrl();
-            String endpoint    = minioProperties.getEndpoint();
-
-            String publicUrl = rawUrl.replace(endpoint, externalUrl);
-
-            log.debug("[MinIO] 生成预签名URL：objectKey={}", objectKey);
-            return publicUrl;
-        } catch (Exception e) {
-            log.error("[MinIO] 生成预签名URL失败：objectKey={}, error={}", objectKey, e.getMessage());
-            // 返回降级的静态路径，前端至少能看到路径
-            return minioProperties.getExternalUrl() + "/" + minioProperties.getBucketName() + "/" + objectKey;
-        }
+        String url = minioProperties.getExternalUrl()
+                + "/" + minioProperties.getBucketName()
+                + "/" + objectKey;
+        log.debug("[MinIO] 生成公开URL：{}", url);
+        return url;
     }
 
     /**

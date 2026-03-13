@@ -26,7 +26,5 @@ minio:
   access-key: aibox
   secret-key: aiboxminio
   bucket-name: aiworkbox-images
-  url-expiry: 604800
   external-url: https://www.huashidai1.com/oss
-  presign-base-path: /oss
 
