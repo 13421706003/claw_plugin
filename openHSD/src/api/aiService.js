@@ -126,10 +126,28 @@ const loadHistory = async (clawId) => {
           try {
             const parsed = JSON.parse(m.attachments)
             if (Array.isArray(parsed)) {
-              // 历史消息图片 url 是 MinIO 公开 URL，统一映射到 base64 字段供渲染复用
               attachments = parsed
                 .filter(a => a.url)
-                .map(a => ({ uid: a.objectKey, name: a.name, type: a.type, base64: a.url }))
+                .map(a => {
+                  // 判断是否图片：优先用 type，其次从 objectKey/name 扩展名判断
+                  const imageExts = ['jpg','jpeg','png','gif','webp','bmp','svg']
+                  const ext = (a.objectKey || a.name || '').split('.').pop().toLowerCase()
+                  const isImage = (a.type && a.type.startsWith('image/')) ||
+                                  imageExts.includes(ext)
+                  // 如果是图片但 type 为空，补全 type
+                  const resolvedType = a.type || (isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'application/octet-stream')
+                  return {
+                    uid:       a.objectKey,
+                    name:      a.name,
+                    type:      resolvedType,
+                    size:      a.size,
+                    objectKey: a.objectKey,
+                    url:       a.url,
+                    // 图片：用 MinIO URL 作为图片 src
+                    // 文件：base64 为 null，渲染时走文件卡片路径
+                    base64:    isImage ? a.url : null,
+                  }
+                })
             }
           } catch (e) {
             console.warn('[aiService] 附件解析失败：', e)
@@ -210,11 +228,21 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
   messages.value.push({ messageId, role: 'assistant', content: '', loading: true })
   pendingContent.set(messageId, '')
 
-  const formattedAttachments = attachments.map(att => ({
-    type: 'image',
-    base64: att.base64,
-    name: att.name
-  }))
+  // 格式化附件：图片需要同时传 objectKey 和 base64，文档只传 objectKey
+  const formattedAttachments = attachments.map(att => {
+    const isImage = att.type && att.type.startsWith('image/')
+    if (att.objectKey) {
+      // 预上传文件
+      if (isImage) {
+        // 图片：需要同时传 objectKey（用于后端存储）和 base64（用于 OpenClaw）
+        return { objectKey: att.objectKey, base64: att.base64, name: att.name, type: att.type, size: att.size }
+      }
+      // 文档：只传 objectKey，后端生成 URL 给 OpenClaw 下载
+      return { objectKey: att.objectKey, name: att.name, type: att.type, size: att.size }
+    }
+    // 兼容旧的粘贴图片（没有 objectKey）
+    return { type: att.type || 'image/png', base64: att.base64, name: att.name }
+  })
 
   try {
     const res = await fetch(`${API_BASE}/claw/send`, {
@@ -251,11 +279,12 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
   // 推入用户消息
   messages.value.push({ messageId, role: 'user', content, attachments })
 
-  const formattedAttachments = attachments.map(att => ({
-    type: 'image',
-    base64: att.base64,
-    name: att.name
-  }))
+  const formattedAttachments = attachments.map(att => {
+    if (att.objectKey) {
+      return { objectKey: att.objectKey, name: att.name, type: att.type, size: att.size }
+    }
+    return { type: att.type || 'image/png', base64: att.base64, name: att.name }
+  })
 
   try {
     const res = await fetch(`${API_BASE}/claw/broadcast`, {

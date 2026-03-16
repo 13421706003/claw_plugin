@@ -1,6 +1,7 @@
 import { WsClient }   from './ws/WsClient.js';
 import { ClawClient } from './ws/ClawClient.js';
 import { setupToken, loadConfig } from './setup.js';
+import { extractText } from './fileExtractor.js';
 
 // ----------------------------------------------------------------
 // 加载配置（先询问是否更新 token）
@@ -160,7 +161,7 @@ const wsClient = new WsClient(config.cloud, clawId);
  * 处理来自云端的业务消息
  * 目前只处理 type:"request"，即后端转发过来的用户消息
  */
-wsClient.onMessage = (msg) => {
+wsClient.onMessage = async (msg) => {
   console.log('[openHSD] 收到云端消息：', JSON.stringify(msg, null, 2));
 
   if (msg.type === 'request') {
@@ -173,23 +174,79 @@ wsClient.onMessage = (msg) => {
       return;
     }
 
-    // 处理附件：Base64 → OpenClaw 格式 { type, mimeType, content }
+    // ── 处理附件 ──────────────────────────────────────────────────
+    // OpenClaw chat.send 的 attachments 只支持图片（非图片会被丢弃）
+    // 所以：
+    //   图片 → 下载转 base64，放入 attachments（OpenClaw 原生支持）
+    //   文档 → 下载提取文本内容，拼接到 message 前面
     const localAttachments = [];
+    let docPrefix = '';
+
     if (Array.isArray(attachments) && attachments.length > 0) {
       for (const att of attachments) {
-        if (att.type === 'image' && att.base64) {
+        const mimeType = att.mimeType || 'application/octet-stream';
+        const isImage  = mimeType.startsWith('image/');
+        const name     = att.name || 'file';
+
+        if (att.url) {
+          try {
+            console.log(`[openHSD] 正在下载附件：${att.url}`);
+            const resp = await fetch(att.url);
+            if (!resp.ok) {
+              console.error(`[openHSD] 下载附件失败 HTTP ${resp.status}：${att.url}`);
+              continue;
+            }
+            const arrayBuffer = await resp.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            if (isImage) {
+              // ── 图片：转 base64 放入 attachments ────────────────
+              const base64 = buffer.toString('base64');
+              localAttachments.push({
+                type:     'image',
+                mimeType: mimeType,
+                content:  base64,
+                fileName: name,
+              });
+              console.log(`[openHSD] 图片附件就绪：mime=${mimeType}，size=${base64.length} chars`);
+            } else {
+              // ── 文档：用 fileExtractor 提取文本，拼接到消息前面 ───
+              const textContent = await extractText(buffer, mimeType, name);
+
+              if (textContent && textContent.trim() && !textContent.startsWith('[')) {
+                // 限制最大字符数，防止超出模型上下文
+                const maxChars = 100000;
+                const truncated = textContent.length > maxChars
+                  ? textContent.substring(0, maxChars) + '\n\n... [文档内容过长，已截断]'
+                  : textContent;
+                docPrefix += `\n<file name="${name}" mime="${mimeType}">\n${truncated}\n</file>\n`;
+                console.log(`[openHSD] 文档提取成功：name=${name}，mime=${mimeType}，chars=${truncated.length}`);
+              } else {
+                docPrefix += `\n[附件：${name}（${mimeType}），${textContent || '文本提取为空'}]\n`;
+                console.warn(`[openHSD] 文档提取失败：name=${name}，mime=${mimeType}，result=${textContent}`);
+              }
+            }
+          } catch (e) {
+            console.error(`[openHSD] 下载附件异常：${e.message}`);
+          }
+
+        } else if (att.type === 'image' && att.base64) {
+          // ── Base64 图片（兼容路径）──────────────────────────────
           const matches = att.base64.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
           if (matches) {
             localAttachments.push({
               type:     'image',
-              mimeType: matches[1],   // e.g. "image/jpeg"
-              content:  matches[2],   // 纯 Base64 数据（不含前缀）
+              mimeType: matches[1],
+              content:  matches[2],
             });
-            console.log(`[openHSD] 附件已处理：mimeType=${matches[1]}，size=${matches[2].length} chars`);
+            console.log(`[openHSD] 附件(Base64)已处理：mimeType=${matches[1]}，size=${matches[2].length} chars`);
           }
         }
       }
     }
+
+    // 文档内容拼接到消息前面
+    const finalMessage = docPrefix ? docPrefix + '\n' + content : content;
 
     // 构造符合 OpenClaw 协议的请求
     const reqId          = nextReqId();
@@ -202,7 +259,7 @@ wsClient.onMessage = (msg) => {
       method : 'chat.send',
       params : {
         sessionKey,
-        message        : content,
+        message        : finalMessage,
         idempotencyKey,
         ...(msg.timeout            ? { timeoutMs: msg.timeout }           : {}),
         ...(context?.thinking      ? { thinking: context.thinking }       : {}),

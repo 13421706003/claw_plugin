@@ -6,8 +6,10 @@ import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.util.Base64;
 
 @Slf4j
@@ -70,6 +72,48 @@ public class MinioService {
     }
 
     /**
+     * 上传任意文件（Multipart）到 MinIO，返回 objectKey
+     *
+     * @param file      Spring MultipartFile
+     * @param userId    用户 ID
+     * @param clawId    设备 ID
+     * @param messageId 消息 ID（预上传阶段可传 "upload"）
+     * @param index     同一批次中第几个文件（0-based）
+     * @return MinIO 对象路径（objectKey）
+     */
+    public String uploadFile(MultipartFile file, String userId, String clawId,
+                             String messageId, int index) throws Exception {
+        String originalName = file.getOriginalFilename() != null
+                ? file.getOriginalFilename() : "file";
+        String contentType  = file.getContentType() != null
+                ? file.getContentType() : "application/octet-stream";
+
+        // 提取扩展名：优先从原始文件名取，否则从 MIME 推断
+        String ext = extensionFromFilename(originalName);
+        if (ext.isEmpty()) {
+            ext = extensionFromMime(contentType);
+        }
+
+        String objectKey = String.format("hsdclaw/%s/%s/%s/%d_%d.%s",
+                userId, clawId, messageId, System.currentTimeMillis(), index, ext);
+
+        try (InputStream is = file.getInputStream()) {
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(minioProperties.getBucketName())
+                            .object(objectKey)
+                            .stream(is, file.getSize(), -1)
+                            .contentType(contentType)
+                            .build()
+            );
+        }
+
+        log.info("[MinIO] 文件上传成功：objectKey={}, size={}bytes, contentType={}",
+                objectKey, file.getSize(), contentType);
+        return objectKey;
+    }
+
+    /**
      * 根据 objectKey 拼接公开访问 URL
      * bucket 需在 MinIO 控制台设为 public read
      *
@@ -91,13 +135,35 @@ public class MinioService {
      * 根据 MIME 类型推断文件扩展名
      */
     private String extensionFromMime(String mimeType) {
-        if (mimeType == null) return "png";
+        if (mimeType == null) return "bin";
         return switch (mimeType.toLowerCase()) {
-            case "image/jpeg", "image/jpg" -> "jpg";
-            case "image/gif"               -> "gif";
-            case "image/webp"              -> "webp";
-            case "image/bmp"               -> "bmp";
-            default                        -> "png";
+            case "image/jpeg", "image/jpg"   -> "jpg";
+            case "image/gif"                 -> "gif";
+            case "image/webp"                -> "webp";
+            case "image/bmp"                 -> "bmp";
+            case "image/png"                 -> "png";
+            case "application/pdf"           -> "pdf";
+            case "application/msword"        -> "doc";
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx";
+            case "application/vnd.ms-excel"  -> "xls";
+            case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"       -> "xlsx";
+            case "application/vnd.ms-powerpoint" -> "ppt";
+            case "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> "pptx";
+            case "text/plain"                -> "txt";
+            case "text/markdown"             -> "md";
+            case "text/csv"                  -> "csv";
+            case "application/zip"           -> "zip";
+            case "application/gzip"          -> "gz";
+            case "application/json"          -> "json";
+            default                          -> "bin";
         };
+    }
+
+    /**
+     * 从文件名提取扩展名，例如 "report.pdf" → "pdf"
+     */
+    private String extensionFromFilename(String filename) {
+        if (filename == null || !filename.contains(".")) return "";
+        return filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
     }
 }

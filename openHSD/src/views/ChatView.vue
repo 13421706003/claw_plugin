@@ -350,6 +350,15 @@
             :styles="{ item: { padding: '6px 12px' } }"
             :style="chatStyles.senderPrompt"
           />
+          <!-- 隐藏的文件选择 input -->
+          <input
+            ref="fileInputRef"
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.csv,.zip,.gz,.json,image/*"
+            style="display: none"
+            @change="onFileInputChange"
+          />
           <!-- 输入框 -->
           <Sender
             :value="inputValue"
@@ -358,10 +367,23 @@
             @cancel="loading = false"
             :loading="loading"
             :style="chatStyles.sender"
-            placeholder="Message (Enter to send, Shift+Enter for line breaks, paste images)"
+            placeholder="Message (Enter to send, Shift+Enter for line breaks, paste images/files)"
             :header="attachments.length > 0 ? renderAttachmentHeader() : undefined"
             :onPasteFile="onPasteFile"
-          />
+          >
+            <template #prefix>
+              <Tooltip title="上传文件（PDF、Word、Excel、Markdown 等，最大 50MB）">
+                <Button
+                  type="text"
+                  size="small"
+                  style="color: #8c8c8c; padding: 0 4px"
+                  @click="triggerFileSelect"
+                >
+                  <template #icon><PaperClipOutlined style="font-size: 16px" /></template>
+                </Button>
+              </Tooltip>
+            </template>
+          </Sender>
           <!-- 底部操作区 -->
           <div
             :style="{
@@ -385,7 +407,7 @@
 
 
 <script setup>
-import { ref, computed, watch, h } from 'vue'
+import { ref, computed, h } from 'vue'
 import { marked } from 'marked'
 import {
   Bubble,
@@ -444,6 +466,7 @@ import {
   RobotOutlined,
 } from '@ant-design/icons-vue'
 import { loading, messages, sendMessage, isConnected, connect, currentClawId, selectClaw, clearHistory } from '../api/aiService.js'
+import { uploadFiles, validateFile, formatSize } from '../api/fileService.js'
 import { useUserStore } from '../stores/user.js'
 import { useRouter } from 'vue-router'
 import { onMounted } from 'vue'
@@ -734,29 +757,123 @@ const onSubmit = (val) => {
   attachments.value = []
 }
 
+// ==================== 附件处理 ====================
+
+/** 文件上传中的 uid 集合（用于显示 loading 状态） */
+const uploadingUids = ref(new Set())
+
+/**
+ * 将 File 对象添加为附件并上传
+ * 图片：先本地预览，上传后保留本地预览 + 存储 objectKey
+ * 其他文件：直接上传，显示文件卡片
+ */
+const addAndUploadFiles = async (files) => {
+  const userId = userStore.user.value?.userId
+  const clawId = currentClawId.value || 'upload'
+  if (!userId) return
+
+  const fileArray = Array.from(files)
+
+  for (const file of fileArray) {
+    const check = validateFile(file)
+    if (!check.valid) {
+      message.error(check.reason)
+      continue
+    }
+
+    const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const isImage = file.type.startsWith('image/')
+
+    // 先插入占位（图片显示本地预览，文件显示 loading 状态）
+    let localBase64 = null
+    if (isImage) {
+      // 图片：用 Promise 等待 FileReader 完成后再继续
+      localBase64 = await new Promise((resolve) => {
+        const reader = new FileReader()
+        reader.onload = (e) => resolve(e.target.result)
+        reader.readAsDataURL(file)
+      })
+      attachments.value.push({
+        uid,
+        name:      file.name,
+        type:      file.type,
+        size:      file.size,
+        base64:    localBase64,  // 保留本地预览（Data URL）
+        uploading: true,
+      })
+    } else {
+      attachments.value.push({
+        uid,
+        name:      file.name,
+        type:      file.type,
+        size:      file.size,
+        base64:    null,
+        uploading: true,
+      })
+    }
+
+    uploadingUids.value.add(uid)
+
+    // 上传到 MinIO
+    try {
+      const results = await uploadFiles([file], String(userId), clawId)
+      const uploaded = results[0]
+      console.log('[ChatView] 上传完成，附件信息：', JSON.stringify(uploaded))
+      // 更新附件：添加 objectKey + url，去除 uploading 状态
+      const idx = attachments.value.findIndex(a => a.uid === uid)
+      if (idx >= 0) {
+        attachments.value[idx] = {
+          uid,
+          name:      uploaded.name || file.name,
+          // 保留前端原始 type，后端返回的 type 可能不正确
+          type:      file.type || uploaded.type || 'application/octet-stream',
+          size:      uploaded.size || file.size,
+          objectKey: uploaded.objectKey,
+          url:       uploaded.url,
+          // 图片：保留本地 base64 预览（不替换成 MinIO URL）
+          base64:    isImage ? localBase64 : null,
+          uploading: false,
+        }
+      }
+    } catch (e) {
+      message.error(`${file.name} 上传失败：${e.message}`)
+      // 上传失败时移除该附件
+      attachments.value = attachments.value.filter(a => a.uid !== uid)
+    } finally {
+      uploadingUids.value.delete(uid)
+    }
+  }
+}
+
 // onPasteFile(firstFile, fileList) — ant-design-x-vue Sender 的回调签名
 const onPasteFile = (firstFile, fileList) => {
   const files = fileList ?? [firstFile]
-  Array.from(files).forEach(file => {
-    if (file && file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        attachments.value.push({
-          uid: Date.now() + '-' + Math.random().toString(36).slice(2),
-          name: file.name || 'image.png',
-          type: file.type,
-          base64: e.target.result,
-        })
-      }
-      reader.readAsDataURL(file)
-    }
-  })
+  addAndUploadFiles(Array.from(files))
 }
 
 const removeAttachment = (uid) => {
   attachments.value = attachments.value.filter(a => a.uid !== uid)
 }
 
+/** 触发文件选择对话框 */
+const fileInputRef = ref(null)
+const triggerFileSelect = () => {
+  fileInputRef.value?.click()
+}
+const onFileInputChange = (e) => {
+  const files = e.target.files
+  if (files && files.length > 0) {
+    addAndUploadFiles(files)
+  }
+  // 清空 input，允许重复选同一文件
+  e.target.value = ''
+}
+
+/**
+ * 渲染附件预览区（Sender 的 header slot）
+ * 图片：缩略图 + 删除按钮
+ * 文件：文件卡片（图标 + 文件名 + 大小）+ 删除按钮
+ */
 const renderAttachmentHeader = () => {
   return h('div', {
     style: {
@@ -768,53 +885,139 @@ const renderAttachmentHeader = () => {
       borderRadius: '8px',
       marginBottom: '8px',
     }
-  }, attachments.value.map(att =>
-    h('div', {
-      key: att.uid,
+  }, attachments.value.map(att => {
+    // 判断是否是图片：type 以 image/ 开头，或者有 base64 DataURL
+    const isImage = (att.type && att.type.startsWith('image/')) || 
+                    (att.base64 && att.base64.startsWith('data:image'))
+    const isUploading = att.uploading
+
+    // 删除按钮（右上角）
+    const removeBtn = h('button', {
+      onClick: (e) => { e.stopPropagation(); removeAttachment(att.uid) },
       style: {
-        position: 'relative',
-        width: '80px',
-        height: '80px',
-        borderRadius: '8px',
-        overflow: 'hidden',
-        border: '1px solid #e8e8e8',
-        flexShrink: 0,
+        position: 'absolute',
+        top: '3px', right: '3px',
+        width: '18px', height: '18px',
+        borderRadius: '50%',
+        border: 'none',
+        background: 'rgba(0,0,0,0.55)',
+        color: '#fff',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '11px',
+        zIndex: 10,
+        padding: 0,
       }
-    }, [
-      h(Image, {
-        src: att.base64,
-        width: 80,
-        height: 80,
-        style: { objectFit: 'cover', display: 'block' },
-        preview: { src: att.base64 },
-      }),
-      h('button', {
-        onClick: (e) => {
-          e.stopPropagation()
-          removeAttachment(att.uid)
-        },
+    }, '×')
+
+    if (isImage) {
+      // 图片缩略图卡片
+      return h('div', {
+        key: att.uid,
         style: {
-          position: 'absolute',
-          top: '3px',
-          right: '3px',
-          width: '18px',
-          height: '18px',
-          borderRadius: '50%',
-          border: 'none',
-          background: 'rgba(0,0,0,0.55)',
-          color: '#fff',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '11px',
-          lineHeight: 1,
-          zIndex: 10,
-          padding: 0,
+          position: 'relative',
+          width: '80px', height: '80px',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          border: '1px solid #e8e8e8',
+          flexShrink: 0,
+          opacity: isUploading ? 0.6 : 1,
+          transition: 'opacity 0.2s',
         }
-      }, '×')
-    ])
-  ))
+      }, [
+        h(Image, {
+          src: att.base64,
+          width: 80, height: 80,
+          style: { objectFit: 'cover', display: 'block' },
+          preview: att.base64 ? { src: att.base64 } : false,
+        }),
+        isUploading && h('div', {
+          style: {
+            position: 'absolute', inset: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255,255,255,0.6)',
+            fontSize: '11px', color: '#666',
+          }
+        }, '上传中...'),
+        !isUploading && removeBtn,
+      ])
+    } else {
+      // 文件卡片
+      const fileIcon = getFileIcon(att.type)
+      const fileColor = getFileColor(att.type)
+      return h('div', {
+        key: att.uid,
+        style: {
+          position: 'relative',
+          width: '120px',
+          padding: '8px',
+          borderRadius: '8px',
+          border: '1px solid #e8e8e8',
+          background: '#fff',
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px',
+          opacity: isUploading ? 0.6 : 1,
+          transition: 'opacity 0.2s',
+        }
+      }, [
+        // 文件图标
+        h('div', {
+          style: {
+            fontSize: '22px',
+            color: fileColor,
+            lineHeight: 1,
+          }
+        }, fileIcon),
+        // 文件名（截断）
+        h('div', {
+          style: {
+            fontSize: '11px',
+            color: '#333',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: '100%',
+          },
+          title: att.name,
+        }, att.name),
+        // 文件大小 或 上传中
+        h('div', {
+          style: { fontSize: '10px', color: '#999' }
+        }, isUploading ? '上传中...' : formatSize(att.size || 0)),
+        !isUploading && removeBtn,
+      ])
+    }
+  }))
+}
+
+/** 根据 MIME 返回文件图标 emoji */
+function getFileIcon(mime) {
+  if (!mime) return '📄'
+  if (mime === 'application/pdf') return '📕'
+  if (mime.includes('word') || mime.includes('msword')) return '📘'
+  if (mime.includes('excel') || mime.includes('spreadsheet')) return '📗'
+  if (mime.includes('powerpoint') || mime.includes('presentation')) return '📙'
+  if (mime === 'text/markdown' || mime === 'text/plain') return '📝'
+  if (mime === 'text/csv') return '📊'
+  if (mime === 'application/zip' || mime === 'application/gzip') return '📦'
+  if (mime === 'application/json') return '{ }'
+  return '📄'
+}
+
+/** 根据 MIME 返回文件图标颜色 */
+function getFileColor(mime) {
+  if (!mime) return '#8c8c8c'
+  if (mime === 'application/pdf') return '#ff4d4f'
+  if (mime.includes('word') || mime.includes('msword')) return '#1677ff'
+  if (mime.includes('excel') || mime.includes('spreadsheet')) return '#52c41a'
+  if (mime.includes('powerpoint') || mime.includes('presentation')) return '#fa8c16'
+  if (mime === 'application/zip' || mime === 'application/gzip') return '#faad14'
+  if (mime === 'application/json') return '#722ed1'
+  return '#8c8c8c'
 }
 
 const onCreateConversation = async () => {
@@ -831,12 +1034,35 @@ const bubbleItems = computed(() => {
   return messages.value.map((msg, index) => {
     let content = msg.content || ''
     
-    // 如果有图片附件，拼接到 content 前面（Markdown 图片格式）
+    // 处理附件：图片拼 Markdown，文件用特殊标记
     if (msg.attachments && msg.attachments.length > 0) {
-      const imageMarkdown = msg.attachments
-        .map(att => `![image](${att.base64})`)
-        .join('\n')
-      content = imageMarkdown + (content ? '\n\n' + content : '')
+      const imageExts = ['jpg','jpeg','png','gif','webp','bmp','svg']
+      const isImageAtt = a => {
+        if (a.type && a.type.startsWith('image/')) return true
+        // 兜底：从 base64 DataURL、url、name、objectKey 判断扩展名
+        if (a.base64 && a.base64.startsWith('data:image')) return true
+        const src = a.url || a.name || a.objectKey || ''
+        const ext = src.split('.').pop().split('?')[0].toLowerCase()
+        return imageExts.includes(ext)
+      }
+      const imageAttachments = msg.attachments.filter(isImageAtt)
+      const fileAttachments  = msg.attachments.filter(a => !isImageAtt(a))
+
+      // 图片：优先用 base64（本地预览），没有则用 url（历史记录）
+      if (imageAttachments.length > 0) {
+        const imageMarkdown = imageAttachments
+          .map(att => `![image](${att.base64 || att.url || ''})`)
+          .join('\n')
+        content = imageMarkdown + (content ? '\n\n' + content : '')
+      }
+
+      // 文件用特殊注释标记，格式：<!--file:name|type|size|url-->
+      if (fileAttachments.length > 0) {
+        const fileMarkers = fileAttachments
+          .map(att => `<!--file:${encodeURIComponent(att.name)}|${att.type || ''}|${att.size || 0}|${att.url || ''}-->`)
+          .join('')
+        content = fileMarkers + content
+      }
     }
     
     // 广播模式下，在 content 前面注入设备标识，格式：<!--claw:xxx-->
@@ -898,49 +1124,94 @@ const bubbleRoles = computed(() => ({
     placement: 'end',
     messageRender: (content) => {
       if (!content) return null
-      
-      // 分离图片和文本（兼容 base64 DataURL 和 MinIO 预签名 URL 两种格式）
+
+      const children = []
+
+      // 1. 解析文件标记 <!--file:name|type|size|url-->
+      const fileRegex = /<!--file:([^|]*)\|([^|]*)\|([^|]*)\|([^>]*)-->/g
+      const fileItems = []
+      let fileMatch
+      let restContent = content
+      while ((fileMatch = fileRegex.exec(content)) !== null) {
+        fileItems.push({
+          name: decodeURIComponent(fileMatch[1]),
+          type: fileMatch[2],
+          size: Number(fileMatch[3]) || 0,
+          url:  fileMatch[4],
+        })
+      }
+      restContent = content.replace(fileRegex, '')
+
+      // 渲染文件卡片
+      if (fileItems.length > 0) {
+        const fileCards = fileItems.map((f, i) =>
+          h('a', {
+            key: i,
+            href: f.url || '#',
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 10px',
+              borderRadius: '8px',
+              border: '1px solid #e8e8e8',
+              background: '#fafafa',
+              textDecoration: 'none',
+              color: 'inherit',
+              minWidth: '160px',
+              maxWidth: '260px',
+              cursor: f.url ? 'pointer' : 'default',
+            }
+          }, [
+            h('span', { style: { fontSize: '22px', flexShrink: 0, color: getFileColor(f.type) } }, getFileIcon(f.type)),
+            h('div', { style: { minWidth: 0 } }, [
+              h('div', {
+                style: { fontSize: '12px', color: '#333', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                title: f.name,
+              }, f.name),
+              h('div', { style: { fontSize: '10px', color: '#999', marginTop: '2px' } }, formatSize(f.size)),
+            ])
+          ])
+        )
+        children.push(h('div', {
+          style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }
+        }, fileCards))
+      }
+
+      // 2. 分离图片 Markdown 和文本
       const imageRegex = /!\[image\]\(([^)]+)\)/g
       const images = []
-      let match
-      while ((match = imageRegex.exec(content)) !== null) {
-        images.push(match[1])
+      let imgMatch
+      while ((imgMatch = imageRegex.exec(restContent)) !== null) {
+        images.push(imgMatch[1])
       }
-      const textContent = content.replace(imageRegex, '').trim()
-      
-      const children = []
-      
-      // 渲染图片（小尺寸缩略图）
+      const textContent = restContent.replace(imageRegex, '').trim()
+
+      // 渲染图片缩略图
       if (images.length > 0) {
         const imgContainer = h('div', {
           style: {
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '6px',
+            display: 'flex', flexWrap: 'wrap', gap: '6px',
             marginBottom: textContent ? '8px' : 0,
           }
         }, images.map((src, i) =>
           h(Image, {
-            key: i,
-            src,
-            width: 120,
-            height: 120,
-            style: { 
-              borderRadius: '8px', 
-              objectFit: 'cover',
-              cursor: 'pointer'
-            },
+            key: i, src,
+            width: 120, height: 120,
+            style: { borderRadius: '8px', objectFit: 'cover', cursor: 'pointer' },
             preview: { src },
           })
         ))
         children.push(imgContainer)
       }
-      
+
       // 渲染文本
       if (textContent) {
         children.push(h('div', textContent))
       }
-      
+
       return h('div', {}, children)
     },
   },
