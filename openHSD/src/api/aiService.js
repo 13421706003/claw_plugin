@@ -333,6 +333,11 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
   }
 }
 
+const clearMessages = () => {
+  messages.value = []
+  currentClawId.value = null
+}
+
 export {
   loading,
   messages,
@@ -343,5 +348,6 @@ export {
   selectClaw,
   isConnected,
   connect,
-  disconnect
+  disconnect,
+  clearMessages
 }

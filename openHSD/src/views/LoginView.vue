@@ -225,6 +225,14 @@ const onLogin = async () => {
 }
 
 onMounted(() => {
+  const state = history.state
+  if (state?.username) {
+    formState.username = state.username
+  }
+  if (state?.password) {
+    formState.password = state.password
+  }
+
   if (cardRef.value) {
     gsap.fromTo(cardRef.value, 
       { opacity: 0, y: 30, scale: 0.95 },

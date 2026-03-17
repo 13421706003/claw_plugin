@@ -247,7 +247,13 @@ const onRegister = async () => {
     console.log('[Register] 响应状态：', res.status)
     console.log('[Register] 响应数据：', data)
     if (res.ok && data.success) {
-      router.push('/login')
+      router.push({
+        path: '/login',
+        state: {
+          username: formState.username,
+          password: formState.password
+        }
+      })
     } else {
       errorMsg.value = data.message || '注册失败'
     }

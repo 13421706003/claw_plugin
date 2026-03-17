@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { login as loginApi } from '../api/auth.js'
+import { clearMessages } from '../api/aiService.js'
 
 const TOKEN_KEY = 'openhsd_token'
 const USER_KEY  = 'openhsd_user'
@@ -37,6 +38,7 @@ export const useUserStore = () => {
   }
 
   const logout = () => {
+    clearMessages()
     _token.value = ''
     _user.value  = null
     localStorage.removeItem(TOKEN_KEY)
