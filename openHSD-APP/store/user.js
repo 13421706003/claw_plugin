@@ -32,3 +32,17 @@ export function useUserStore() {
 
   return { token, user, isLogged, setAuth, logout }
 }
+
+/**
+ * 获取原始 token 字符串（用于复制等操作）
+ */
+export function getUserToken() {
+  return _token.value || ''
+}
+
+/**
+ * 获取原始用户数据对象（用于直接访问）
+ */
+export function getUserData() {
+  return _user.value || null
+}

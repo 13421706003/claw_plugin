@@ -222,7 +222,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, nextTick, onUnmounted  } from 'vue'
-import { useUserStore } from '../../store/user.js'
+import { useUserStore, getUserToken } from '../../store/user.js'
 import { getClawStatus } from '../../api/claw.js'
 import {
   loading, messages, currentClawId,
@@ -253,7 +253,11 @@ const selectedIndex = ref(0)
 const currentSession = ref(sessionOptions.value[selectedIndex.value].value)
 const activeDropdown = ref(null)
 
-const userInitial = computed(() => (userStore.user?.username || 'U').charAt(0).toUpperCase())
+const userInitial = computed(() => {
+  const user = userStore.user
+  if (!user || !user.username) return 'U'
+  return user.username.charAt(0).toUpperCase()
+})
 
 const quickPrompts = [
   { key: '1', text: '这个项目是什么？' },
@@ -366,7 +370,7 @@ const filterDevices = () => {
 
 const copyToken = () => {
   uni.setClipboardData({
-    data: userStore.token,
+    data: getUserToken(),
     success: () => {
       tokenCopied.value = true
       setTimeout(() => { tokenCopied.value = false }, 1500)
