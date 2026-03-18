@@ -507,6 +507,8 @@ const renderMarkdown = (content) => {
   display: flex;
   flex-direction: column;
   width: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* 顶部导航栏 */
@@ -1018,7 +1020,7 @@ const renderMarkdown = (content) => {
 /* 聊天区域 */
 .chat-scroll {
   flex: 1;
-  overflow: hidden;
+  min-height: 0;
 }
 
 /* 欢迎界面 */
