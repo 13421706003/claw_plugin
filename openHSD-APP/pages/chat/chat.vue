@@ -184,25 +184,30 @@
             <text class="quick-item-text">{{ item.text }}</text>
           </view>
         </view>
-        <scroll-view v-if="attachments.length > 0" scroll-x class="attachment-preview" show-scrollbar="false">
-          <view class="attachment-preview-list">
-            <view v-for="att in attachments" :key="att.uid" class="att-thumb-wrap">
-              <image :src="att.base64" mode="aspectFill" class="att-thumb" />
-              <view class="att-remove" @tap="removeAttachment(att.uid)">
-                <text class="att-remove-text">×</text>
+        <!-- 输入框容器 - 包含预览和输入框 -->
+        <view class="input-container" :class="{ 'has-attachments': attachments.length > 0, 'focused': inputFocused }">
+          <!-- 附件预览网格 - 在顶部 -->
+          <view v-if="attachments.length > 0" class="attachment-preview-container">
+            <view class="attachment-preview-list">
+              <view v-for="att in attachments" :key="att.uid" class="att-item">
+                <image :src="att.base64" mode="aspectFill" class="att-thumb" @tap="previewImage(att.base64)" />
+                <view class="att-remove" @tap="removeAttachment(att.uid)">
+                  <text class="att-remove-text">×</text>
+                </view>
               </view>
             </view>
           </view>
-        </scroll-view>
-        <view class="input-row" :class="{ 'active': inputRowActive }">
-          <view class="input-action-btn" @tap="chooseImage">
-            <image src="/static/document.png" mode="aspectFit" style="width: 30rpx; height: 30rpx;" />
-          </view>
-          <textarea class="input-box" v-model="inputValue" placeholder="请输入消息内容..."
-            placeholder-class="input-placeholder" :disabled="loading" auto-height :max-height="120" confirm-type="send"
-            @confirm="onSend" @focus="onInputFocus" @blur="onInputBlur" />
-          <view class="input-send-btn" @tap="onSend">
-            <image src="/static/arrow-top.png" mode="aspectFit" style="width: 32rpx; height: 32rpx; color: #fff;" />
+          <!-- 输入框行 -->
+          <view class="input-row" :class="{ 'active': inputRowActive }">
+            <view class="input-action-btn" @tap="chooseImage">
+              <image src="/static/document.png" mode="aspectFit" style="width: 30rpx; height: 30rpx;" />
+            </view>
+            <textarea class="input-box" v-model="inputValue" placeholder="请输入消息内容..."
+              placeholder-class="input-placeholder" :disabled="loading" auto-height :max-height="120" confirm-type="send"
+              @confirm="onSend" @focus="onInputFocus" @blur="onInputBlur" />
+            <view class="input-send-btn" @tap="onSend">
+              <image src="/static/arrow-top.png" mode="aspectFit" style="width: 32rpx; height: 32rpx; color: #fff;" />
+            </view>
           </view>
         </view>
         <view class="input-buttons">
@@ -406,28 +411,135 @@ const onNewSession = async () => {
 }
 
 const chooseImage = () => {
-  uni.chooseImage({
-    count: 3,
-    sizeType: ['compressed'],
-    sourceType: ['album', 'camera'],
-    success: (res) => {
-      res.tempFilePaths.forEach((path, i) => {
-        uni.getFileSystemManager().readFile({
-          filePath: path,
-          encoding: 'base64',
-          success: (r) => {
-            const ext = path.split('.').pop()?.toLowerCase() || 'jpg'
-            const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
-            attachments.value.push({
-              uid: Date.now() + '-' + i,
-              name: `image_${Date.now()}.${ext}`,
-              base64: `data:${mime};base64,${r.data}`
-            })
+  const sysInfo = uni.getSystemInfoSync()
+  const platform = sysInfo.platform?.toLowerCase() || ''
+  const isH5 = platform === 'web' || platform === 'h5' || typeof document !== 'undefined'
+  
+  console.log('[Chat] 平台检测:', { platform, isH5 })
+  
+  // 定义 H5 文件选择函数
+  const chooseImageFromH5 = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.multiple = true
+    
+    input.onchange = (e) => {
+      const files = e.target.files
+      if (!files || files.length === 0) return
+      
+      for (let i = 0; i < Math.min(files.length, 3); i++) {
+        const file = files[i]
+        const reader = new FileReader()
+        
+        reader.onload = (event) => {
+          const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+          const mime = file.type || (ext === 'png' ? 'image/png' : 'image/jpeg')
+          const base64 = event.target.result
+          
+          // 计算文件大小
+          const sizeInKB = (file.size / 1024).toFixed(1)
+          
+          attachments.value.push({
+            uid: Date.now() + '-' + i,
+            name: file.name || `image_${Date.now()}.${ext}`,
+            size: sizeInKB,
+            base64: base64
+          })
+          console.log('[Chat] H5 文件上传成功:', file.name, `${sizeInKB} KB`)
+        }
+        
+        reader.onerror = () => {
+          console.error('[Chat] 文件读取失败:', file.name)
+          uni.showToast({ title: '文件读取失败', icon: 'none', duration: 1000 })
+        }
+        
+        reader.readAsDataURL(file)
+      }
+    }
+    
+    input.click()
+  }
+  
+  // 定义原生平台文件选择函数
+  const chooseImageFromNative = () => {
+    uni.chooseImage({
+      count: 3,
+      sizeType: ['compressed'],
+      sourceType: ['album', 'camera'],
+      success: (res) => {
+        console.log('[Chat] uni.chooseImage 成功，返回:', res)
+        res.tempFilePaths?.forEach((path, i) => {
+          // 尝试使用 FileSystemManager
+          if (uni.getFileSystemManager && typeof uni.getFileSystemManager === 'function') {
+            try {
+              uni.getFileSystemManager().readFile({
+                filePath: path,
+                encoding: 'base64',
+                success: (r) => {
+                  const ext = path.split('.').pop()?.toLowerCase() || 'jpg'
+                  const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+                  // 计算文件大小（base64转换后的大小估算）
+                  const sizeInKB = (r.data.length / 1024).toFixed(1)
+                  attachments.value.push({
+                    uid: Date.now() + '-' + i,
+                    name: `image_${Date.now()}.${ext}`,
+                    size: sizeInKB,
+                    base64: `data:${mime};base64,${r.data}`
+                  })
+                  console.log('[Chat] 原生平台文件读取成功:', sizeInKB, 'KB')
+                },
+                fail: (err) => {
+                  console.error('[Chat] FileSystemManager 读取失败:', err)
+                  uni.showToast({ title: '文件读取失败', icon: 'none', duration: 1000 })
+                }
+              })
+            } catch (e) {
+              console.error('[Chat] FileSystemManager 异常:', e)
+              uni.showToast({ title: '文件读取异常', icon: 'none', duration: 1000 })
+            }
+          } else {
+            console.warn('[Chat] getFileSystemManager 不可用，尝试备降到 FileReader')
+            // 备降方案：如果是 H5 也支持 FileReader，则尝试使用
+            if (typeof FileReader !== 'undefined' && typeof fetch !== 'undefined') {
+              fetch(`file://${path}`)
+                .then(res => res.blob())
+                .then(blob => {
+                  const reader = new FileReader()
+                  reader.onload = (e) => {
+                    const ext = path.split('.').pop()?.toLowerCase() || 'jpg'
+                    const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+                    attachments.value.push({
+                      uid: Date.now() + '-' + i,
+                      name: `image_${Date.now()}.${ext}`,
+                      base64: e.target.result
+                    })
+                  }
+                  reader.readAsDataURL(blob)
+                })
+                .catch(() => {
+                  uni.showToast({ title: '该平台不支持文件读取', icon: 'none', duration: 1000 })
+                })
+            } else {
+              uni.showToast({ title: '该平台不支持文件读取', icon: 'none', duration: 1000 })
+            }
           }
         })
-      })
-    }
-  })
+      },
+      fail: (err) => {
+        console.error('[Chat] uni.chooseImage 失败:', err)
+      }
+    })
+  }
+  
+  // 根据平台选择对应的处理方式
+  if (isH5) {
+    console.log('[Chat] 使用 H5 文件选择')
+    chooseImageFromH5()
+  } else {
+    console.log('[Chat] 使用原生平台文件选择')
+    chooseImageFromNative()
+  }
 }
 
 const removeAttachment = (uid) => {
@@ -688,7 +800,8 @@ const renderMarkdown = (content) => {
 .picker-input {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  gap: 4rpx;
 }
 
 /* 选择器文字 */
@@ -1051,7 +1164,7 @@ const renderMarkdown = (content) => {
 }
 
 .quick-item-text {
-  font-size: 22rpx;
+  font-size: 24rpx;
   color: rgba(0, 0, 0, 0.6);
   white-space: nowrap;
 }
@@ -1339,7 +1452,7 @@ const renderMarkdown = (content) => {
 
 /* 用户气泡：深色 */
 .bubble-user {
-  background: #1a1a1a;
+  background: #f2f2f7;
   border-bottom-right-radius: 6rpx;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.15);
 }
@@ -1355,7 +1468,7 @@ const renderMarkdown = (content) => {
 
 .bubble-text-user {
   font-size: 27rpx;
-  color: #fff;
+  color: #0a0a0a;
   line-height: 1.6;
 }
 
@@ -1411,36 +1524,81 @@ const renderMarkdown = (content) => {
   flex-shrink: 0;
   background: #fff;
   padding: 12rpx 20rpx 20rpx;
-  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
-  gap: 10rpx;
+  gap: 12rpx;
   width: 100%;
+  transition: all 0.3s ease;
 }
 
-.attachment-preview {
-  margin-bottom: 10rpx;
+/* 输入框容器 - 包含预览和输入框 */
+.input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 2rpx solid rgba(0, 0, 0, 0.15);
+  border-radius: 20rpx;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.input-container.has-attachments {
+  border-color: #1677ff;
+}
+
+.input-container.focused {
+  border-color: #1677ff;
+}
+
+/* 附件预览容器 */
+.attachment-preview-container {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.02);
+  padding: 12rpx 12rpx 12rpx 12rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
 }
 
 .attachment-preview-list {
   display: flex;
   gap: 12rpx;
-  padding: 4rpx 0;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
-.att-thumb-wrap {
+/* 附件项 */
+.att-item {
+  display: flex;
   position: relative;
   flex-shrink: 0;
+  animation: attachmentSlideIn 0.3s ease-out;
 }
 
 .att-thumb {
   width: 96rpx;
   height: 96rpx;
-  border-radius: 12rpx;
+  border-radius: 8rpx;
   object-fit: cover;
   border: 1rpx solid rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
 }
 
+.att-thumb:active {
+  transform: scale(0.95);
+  opacity: 0.8;
+}
+
+@keyframes attachmentSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 删除按钮 */
 .att-remove {
   position: absolute;
   top: -8rpx;
@@ -1452,30 +1610,41 @@ const renderMarkdown = (content) => {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.att-remove:active {
+  background: rgba(0, 0, 0, 0.75);
+  transform: scale(1.1);
 }
 
 .att-remove-text {
-  font-size: 22rpx;
+  font-size: 20rpx;
   color: #fff;
   line-height: 1;
+  font-weight: bold;
 }
 
 .input-row {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  background: #f7f7f8;
-  border: 1.5rpx solid rgba(0, 0, 0, 0.07);
-  border-radius: 20rpx;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   padding: 12rpx 12rpx 12rpx 18rpx;
   min-height: 80rpx;
   transition: all 0.2s ease;
 }
 
 .input-row.active {
-  background: #fff;
-  border-color: #1677ff !important;
-  box-shadow: 0 0 0 3rpx rgba(22, 119, 255, 0.12) !important;
+  background: transparent;
+}
+
+.input-container.has-attachments .input-row {
+  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
+  padding-top: 12rpx;
 }
 
 .input-action-btn {
@@ -1502,7 +1671,7 @@ const renderMarkdown = (content) => {
   min-height: 48rpx;
   max-height: 160rpx;
   line-height: 1.5;
-  padding: 6rpx 0;
+  padding: 8rpx 0;
   border: none;
   outline: none;
 }
@@ -1514,6 +1683,8 @@ const renderMarkdown = (content) => {
 
 .input-placeholder {
   color: rgba(0, 0, 0, 0.25);
+  line-height: 1.5;
+  font-size: 24rpx;
 }
 
 .input-buttons {
@@ -1526,10 +1697,15 @@ const renderMarkdown = (content) => {
 }
 
 .new-session-btn {
-  padding: 10rpx 20rpx;
+  height: 56rpx;
+  min-width: 120rpx;
+  padding: 0 20rpx;
   border-radius: 20rpx;
   border: 1rpx solid rgba(0, 0, 0, 0.1);
   background: #f5f5f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
@@ -1544,7 +1720,7 @@ const renderMarkdown = (content) => {
   min-width: 90rpx;
   height: 56rpx;
   border-radius: 20rpx;
-  background: #1a1a1a;
+  background: #ff4d4f;
   display: flex;
   align-items: center;
   justify-content: center;
