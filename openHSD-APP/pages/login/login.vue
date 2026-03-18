@@ -140,10 +140,13 @@ const onLogin = async () => {
   errorMsg.value = ''
   try {
     const data = await loginApi(username.value.trim(), password.value)
+    console.log('登录返回数据：', data) // 调试：打印返回数据
     userStore.setAuth(data, remember.value)
+    console.log('设置后用户状态：', userStore.user.value) // 调试：打印用户状态
     uni.reLaunch({ url: '/pages/chat/chat' })
   } catch (e) {
     errorMsg.value = e.message || '用户名或密码错误'
+    console.error('登录错误：', e) // 调试：打印错误信息
   } finally {
     loading.value = false
   }
