@@ -1242,6 +1242,8 @@ const renderMarkdown = (content) => {
   align-items: flex-start;
   gap: 14rpx;
   margin-bottom: 28rpx;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .msg-row-user {
@@ -1284,16 +1286,21 @@ const renderMarkdown = (content) => {
 .msg-bubble-wrap {
   display: flex;
   flex-direction: column;
-  max-width: 75%;
+  min-width: 0;
+  overflow: hidden;
   gap: 6rpx;
 }
 
 .bubble-wrap-user {
   align-items: flex-end;
+  max-width: 75%;
 }
 
 .bubble-wrap-assistant {
   align-items: flex-start;
+  max-width: 85%;
+  min-width: 0;
+  flex: 1;
 }
 
 /* 附件 */
@@ -1332,6 +1339,9 @@ const renderMarkdown = (content) => {
   border: 1rpx solid rgba(0, 0, 0, 0.07);
   border-bottom-left-radius: 6rpx;
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .bubble-text-user {
@@ -1380,6 +1390,11 @@ const renderMarkdown = (content) => {
   font-size: 27rpx;
   color: rgba(0, 0, 0, 0.82);
   line-height: 1.65;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  overflow: hidden;
 }
 
 /* 输入区域 */
