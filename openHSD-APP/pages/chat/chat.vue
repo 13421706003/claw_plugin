@@ -227,7 +227,7 @@ import { getClawStatus } from '../../api/claw.js'
 import {
   loading, messages, currentClawId,
   isConnected, connect, disconnect,
-  send, selectClaw, clearHistory
+  send, selectClaw, clearHistory, loadHistory
 } from '../../api/aiService.js'
 
 const userStore = useUserStore()
@@ -277,10 +277,16 @@ const quickItems = [
 ]
 watch(
   selectedIndex,
-  (newIndex, oldIndex) => {
-    console.log('✅ 索引更新：old=', oldIndex, 'new=', newIndex)
+  async (newIndex, oldIndex) => {
     currentSession.value = sessionOptions.value[newIndex].value
-    console.log('✅ 当前会话：', currentSession.value)
+    // 切换 session：清空消息，Main Session 重新加载历史，其他 session 从空白开始
+    if (oldIndex !== undefined) {
+      if (currentSession.value === 'main' && currentClawId.value) {
+        await loadHistory(currentClawId.value)
+      } else {
+        messages.value = []
+      }
+    }
   },
   { immediate: true, deep: false }
 )
@@ -299,9 +305,14 @@ const handleClickOutside = (event) => {
     activeDropdown.value = null
   }
 }
-const refreshChat = () => {
-  console.log('刷新聊天会话')
-  // 可在此添加实际刷新逻辑
+const refreshChat = async () => {
+  if (!currentClawId.value) return
+  if (currentSession.value === 'main') {
+    await loadHistory(currentClawId.value)
+  } else {
+    messages.value = []
+  }
+  uni.showToast({ title: '已刷新', icon: 'none', duration: 800 })
 }
 onMounted(async () => {
   const sys = uni.getSystemInfoSync()
@@ -1023,8 +1034,8 @@ const renderMarkdown = (content) => {
 
 .quick-item {
   padding: 8rpx 18rpx;
-  background-color: #f5f5f7;
-  border: 1rpx solid rgba(0, 0, 0, 0.06);
+  background-color: transparent;
+  border: 1rpx solid rgba(0, 0, 0, 0.12);
   border-radius: 20rpx;
   flex-shrink: 0;
   transition: background-color 0.15s ease;
@@ -1333,12 +1344,10 @@ const renderMarkdown = (content) => {
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.15);
 }
 
-/* AI 气泡：白色卡片感 */
+/* AI 气泡：灰色背景 */
 .bubble-assistant {
-  background: #ffffff;
-  border: 1rpx solid rgba(0, 0, 0, 0.07);
+  background: #f2f2f7;
   border-bottom-left-radius: 6rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
@@ -1513,6 +1522,7 @@ const renderMarkdown = (content) => {
   gap: 10rpx;
   margin-left: auto;
   margin-top: 4rpx;
+  padding-bottom: 16rpx;
 }
 
 .new-session-btn {
