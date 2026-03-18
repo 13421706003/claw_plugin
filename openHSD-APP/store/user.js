@@ -18,10 +18,10 @@ export function useUserStore() {
   const setAuth = (data, remember = true) => {
     _token.value = data.token
     _user.value  = { userId: data.userId, username: data.username }
-    if (remember) {
-      storage.setToken(data.token)
-      storage.setUser(_user.value)
-    }
+    // 用户信息和 token 始终持久化，确保刷新页面后数据不丢失
+    // remember 参数保留供将来扩展（如区分 token 有效期）
+    storage.setToken(data.token)
+    storage.setUser(_user.value)
   }
 
   const logout = () => {

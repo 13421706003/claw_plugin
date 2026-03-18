@@ -144,7 +144,7 @@ const onLogin = async () => {
     uni.reLaunch({ url: '/pages/chat/chat' })
   } catch (e) {
     errorMsg.value = e.message || '用户名或密码错误'
-    console.error('登录错误：', e) // 调试：打印错误信息
+    console.error('登录错误：', e)
   } finally {
     loading.value = false
   }
