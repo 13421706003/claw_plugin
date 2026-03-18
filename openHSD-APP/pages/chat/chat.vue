@@ -40,15 +40,15 @@
           <view class="panel-avatar">
             <text class="panel-avatar-text">{{ userInitial }}</text>
           </view>
-          <view class="panel-user-info"  v-if="userStore.user">
-            <text class="panel-username">{{ userStore.user?.username }}</text>
-            <text class="panel-userid">ID: {{ userStore.user?.userId }}</text>
+          <view class="panel-user-info" v-if="currentUser">
+            <text class="panel-username">{{ currentUser.username }}</text>
+            <text class="panel-userid">ID: {{ currentUser.userId }}</text>
           </view>
         </view>
         <view class="panel-section">
           <text class="panel-section-title">TOKEN</text>
           <view class="token-box">
-            <text class="token-text" selectable>{{ userStore.token }}</text>
+            <text class="token-text" selectable>{{ currentToken }}</text>
           </view>
           <view class="copy-btn" @tap="copyToken">
             <text class="copy-btn-text">{{ tokenCopied ? '已复制!' : '复制' }}</text>
@@ -222,7 +222,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, nextTick, onUnmounted  } from 'vue'
-import { useUserStore, getUserToken } from '../../store/user.js'
+import { useUserStore, getUserToken, getUserData } from '../../store/user.js'
 import { getClawStatus } from '../../api/claw.js'
 import {
   loading, messages, currentClawId,
@@ -253,8 +253,12 @@ const selectedIndex = ref(0)
 const currentSession = ref(sessionOptions.value[selectedIndex.value].value)
 const activeDropdown = ref(null)
 
+// 解包 computed ref，确保模板中能正确访问
+const currentUser  = computed(() => getUserData())
+const currentToken = computed(() => getUserToken())
+
 const userInitial = computed(() => {
-  const user = userStore.user
+  const user = currentUser.value
   if (!user || !user.username) return 'U'
   return user.username.charAt(0).toUpperCase()
 })
@@ -280,7 +284,6 @@ watch(
   },
   { immediate: true, deep: false }
 )
-console.log('Vuex 用户信息：', userStore.user);
 // 点击外部关闭下拉框激活状态
 const handleClickOutside = (event) => {
   const pickers = document.querySelectorAll('.device-select-bar, .session-picker')
@@ -305,8 +308,8 @@ onMounted(async () => {
   document.addEventListener('click', handleClickOutside)
   safeBottom.value = sys.safeAreaInsets?.bottom || 0
   // 确保登录后连接
-  if (userStore.token) {
-    connect(userStore.token)
+  if (currentToken.value) {
+    connect()
     await fetchClawStatus()
     if (clawList.value.length > 0 && !selectedClawId.value) {
       onClawChange(clawList.value[0].clawId)
@@ -330,11 +333,11 @@ watch(messages, () => {
 }, { deep: true })
 
 const fetchClawStatus = async () => {
-  const userId = userStore.user?.userId
-  if (!userId || !userStore.token) return
+  const userId = currentUser.value?.userId
+  if (!userId || !currentToken.value) return
   loadingStatus.value = true
   try {
-    const data = await getClawStatus(userId, userStore.token)
+    const data = await getClawStatus(userId, currentToken.value)
     clawList.value = data.clawList || []
     filteredClawList.value = clawList.value
   } catch (e) {
@@ -346,7 +349,7 @@ const fetchClawStatus = async () => {
 
 const onClawChange = async (clawId) => {
   selectedClawId.value = clawId
-  await selectClaw(clawId, userStore.token)
+  await selectClaw(clawId, currentToken.value)
 }
 
 const formatHeartbeat = (ts) => {
@@ -369,8 +372,9 @@ const filterDevices = () => {
 }
 
 const copyToken = () => {
+  const tokenStr = currentToken.value
   uni.setClipboardData({
-    data: getUserToken(),
+    data: tokenStr,
     success: () => {
       tokenCopied.value = true
       setTimeout(() => { tokenCopied.value = false }, 1500)
@@ -385,7 +389,7 @@ const onLogout = () => {
 }
 
 const onNewSession = async () => {
-  await clearHistory(userStore.token)
+  await clearHistory(currentToken.value)
   uni.showToast({ title: '已清空', icon: 'none', duration: 1200 })
 }
 
@@ -432,7 +436,7 @@ const onSend = async () => {
   const atts = [...attachments.value]
   inputValue.value = ''
   attachments.value = []
-  await send(text, atts, userStore.token)
+  await send(text, atts, currentToken.value)
 }
 
 const onPromptTap = (text) => {
