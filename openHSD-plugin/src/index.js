@@ -2,11 +2,56 @@ import { WsClient }   from './ws/WsClient.js';
 import { ClawClient } from './ws/ClawClient.js';
 import { setupToken, loadConfig } from './setup.js';
 import { extractText } from './fileExtractor.js';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+
+// ----------------------------------------------------------------
+// 从 JWT Token 解析 userId
+// ----------------------------------------------------------------
+function parseUserIdFromToken(token) {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
+    return payload?.userId ?? payload?.sub ?? null;
+  } catch (e) {
+    console.warn('[openHSD] 解析 Token 失败：', e.message);
+    return null;
+  }
+}
+
+// ----------------------------------------------------------------
+// 写入 session.json 供 OpenClaw Skill 读取
+// ----------------------------------------------------------------
+function writeSessionFile(userId, clawId) {
+  const sessionDir = path.join(os.homedir(), '.openhsd');
+  const sessionPath = path.join(sessionDir, 'session.json');
+
+  try {
+    if (!fs.existsSync(sessionDir)) {
+      fs.mkdirSync(sessionDir, { recursive: true });
+    }
+
+    const sessionData = {
+      userId,
+      clawId,
+      updatedAt: Date.now()
+    };
+
+    fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2) + '\n', 'utf8');
+    console.log(`[openHSD] Session 信息已写入：${sessionPath}`);
+  } catch (e) {
+    console.error('[openHSD] 写入 session.json 失败：', e.message);
+  }
+}
 
 // ----------------------------------------------------------------
 // 加载配置（先询问是否更新 token）
 // ----------------------------------------------------------------
 const config = await setupToken();
+const userId = parseUserIdFromToken(config.cloud.token);
 
 const defaultSessionKey = config.openclaw.defaultSessionKey ?? 'main';
 
@@ -21,6 +66,8 @@ _tempClawClient._loadOrCreateDeviceIdentity();
 const deviceId = _tempClawClient.getDeviceId();
 
 const clawId = `claw_${deviceId.substring(0, 16)}`;
+
+writeSessionFile(userId, clawId);
 
 console.log(`[openHSD] 启动，clawId=${clawId}`);
 console.log(`[openHSD] 云端地址：${config.cloud.wsUrl}`);

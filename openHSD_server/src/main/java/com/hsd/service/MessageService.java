@@ -16,4 +16,6 @@ public interface MessageService {
     void saveAssistantMessage(String messageId, Long userId, String clawId, String content, String status);
 
     void clearHistory(Long userId, String clawId);
+
+    void saveFilePushMessage(String messageId, Long userId, String clawId, String attachmentsJson);
 }

@@ -1,7 +1,11 @@
-const API_BASE = import.meta.env.VITE_API_BASE
+import { API_BASE } from './request.js'
 
 /** 单文件最大 50MB（与后端对齐） */
 export const MAX_FILE_SIZE = 50 * 1024 * 1024
+
+function getToken() {
+  return localStorage.getItem('openhsd_token') || sessionStorage.getItem('openhsd_token') || ''
+}
 
 /** 允许的 MIME 类型 */
 export const ALLOWED_MIME_TYPES = [
@@ -38,6 +42,13 @@ export async function uploadFiles(files, userId, clawId) {
     formData.append('files', file)
   }
 
+  const token = getToken()
+  const headers = {}
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  
   const res = await fetch(`${API_BASE}/file/upload`, {
     method: 'POST',
     body: formData,

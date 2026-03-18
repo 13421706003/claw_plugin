@@ -1,7 +1,6 @@
 import { ref } from 'vue'
 import { useWebSocket } from './websocket.js'
-
-const API_BASE = import.meta.env.VITE_API_BASE
+import { request, API_BASE } from './request.js'
 
 let msgCounter = 0
 const nextMessageId = () => `msg_${Date.now()}_${++msgCounter}`
@@ -55,7 +54,28 @@ setOnMessage((type, data) => {
       loading.value = false
     }
   }
+
+  if (type === 'file_push') {
+    handleFilePush(data)
+  }
 })
+
+const handleFilePush = (data) => {
+  const { clawId, fileUrl, fileName, fileType, fileSize } = data
+
+  if (currentClawId.value === clawId || currentClawId.value === '__ALL__') {
+    messages.value.push({
+      messageId: `file_${Date.now()}`,
+      role: 'assistant',
+      clawId,
+      content: '',
+      filePush: { url: fileUrl, name: fileName, type: fileType, size: fileSize },
+      loading: false
+    })
+  } else {
+    console.log(`[aiService] 设备 ${clawId} 已回复`)
+  }
+}
 
 const extractText = (content) => {
   if (!content) return ''
@@ -116,7 +136,7 @@ const loadHistory = async (clawId) => {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/messages?userId=${userId}&clawId=${clawId}`)
+    const res = await request(`/messages?userId=${userId}&clawId=${clawId}`)
     const data = await res.json()
     if (data.success && Array.isArray(data.messages)) {
       messages.value = data.messages.map(m => {
@@ -175,7 +195,7 @@ const clearHistory = async () => {
   if (!userId || !currentClawId.value) return
 
   try {
-    await fetch(`${API_BASE}/messages?userId=${userId}&clawId=${currentClawId.value}`, {
+    await request(`/messages?userId=${userId}&clawId=${currentClawId.value}`, {
       method: 'DELETE'
     })
     messages.value = []
@@ -245,9 +265,8 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
   })
 
   try {
-    const res = await fetch(`${API_BASE}/claw/send`, {
+    const res = await request('/claw/send', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId,
         messageId,
@@ -287,9 +306,8 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
   })
 
   try {
-    const res = await fetch(`${API_BASE}/claw/broadcast`, {
+    const res = await request('/claw/broadcast', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId,
         messageId,

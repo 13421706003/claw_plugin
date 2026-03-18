@@ -60,4 +60,18 @@ public class MessageServiceImpl implements MessageService {
         int deleted = messageMapper.deleteByUserIdAndClawId(userId, clawId);
         log.info("[MessageServiceImpl] 清空历史：userId={}, clawId={}, deleted={}", userId, clawId, deleted);
     }
+
+    @Override
+    public void saveFilePushMessage(String messageId, Long userId, String clawId, String attachmentsJson) {
+        Message msg = new Message();
+        msg.setMessageId(messageId);
+        msg.setUserId(userId);
+        msg.setClawId(clawId);
+        msg.setRole("assistant");
+        msg.setContent("");
+        msg.setAttachments(attachmentsJson);
+        msg.setStatus("completed");
+        messageMapper.insert(msg);
+        log.info("[MessageServiceImpl] 保存文件推送消息：messageId={}, userId={}, clawId={}", messageId, userId, clawId);
+    }
 }

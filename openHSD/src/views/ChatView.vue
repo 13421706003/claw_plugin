@@ -470,6 +470,7 @@ import { uploadFiles, validateFile, formatSize } from '../api/fileService.js'
 import { useUserStore } from '../stores/user.js'
 import { useRouter } from 'vue-router'
 import { onMounted } from 'vue'
+import { request } from '../api/request.js'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -517,8 +518,7 @@ const fetchClawStatus = async () => {
   if (!userId) return
   loadingStatus.value = true
   try {
-    const apiBase = import.meta.env.VITE_API_BASE
-    const res = await fetch(`${apiBase}/claw/status?userId=${userId}`)
+    const res = await request(`/claw/status?userId=${userId}`)
     const data = await res.json()
     clawList.value = data.clawList || []
   } catch (e) {
@@ -1070,6 +1070,12 @@ const bubbleItems = computed(() => {
       content = `<!--claw:${msg.clawId}-->${content}`
     }
 
+    // 处理文件推送
+    if (msg.filePush) {
+      const f = msg.filePush
+      content = `<!--file:${encodeURIComponent(f.name)}|${f.type || ''}|${f.size || 0}|${f.url || ''}-->${content}`
+    }
+
     return {
       key: msg.messageId || index.toString(),
       role: msg.role,
@@ -1088,12 +1094,63 @@ const bubbleRoles = computed(() => ({
 
       const children = []
 
-      // 解析广播模式的设备标识 <!--claw:xxx-->
-      let actualContent = content
-      const clawMatch = content.match(/^<!--claw:([^>]+)-->/)
+      // 1. 解析文件标记 <!--file:name|type|size|url-->
+      const fileRegex = /<!--file:([^|]*)\|([^|]*)\|([^|]*)\|([^>]*)-->/g
+      const fileItems = []
+      let fileMatch
+      while ((fileMatch = fileRegex.exec(content)) !== null) {
+        fileItems.push({
+          name: decodeURIComponent(fileMatch[1]),
+          type: fileMatch[2],
+          size: Number(fileMatch[3]) || 0,
+          url:  fileMatch[4],
+        })
+      }
+      let actualContent = content.replace(fileRegex, '')
+
+      // 渲染文件卡片
+      if (fileItems.length > 0) {
+        const fileCards = fileItems.map((f, i) =>
+          h('a', {
+            key: i,
+            href: f.url || '#',
+            target: '_blank',
+            rel: 'noopener noreferrer',
+            style: {
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 10px',
+              borderRadius: '8px',
+              border: '1px solid #e8e8e8',
+              background: '#fafafa',
+              textDecoration: 'none',
+              color: 'inherit',
+              minWidth: '160px',
+              maxWidth: '260px',
+              cursor: f.url ? 'pointer' : 'default',
+            }
+          }, [
+            h('span', { style: { fontSize: '22px', flexShrink: 0, color: getFileColor(f.type) } }, getFileIcon(f.type)),
+            h('div', { style: { minWidth: 0 } }, [
+              h('div', {
+                style: { fontSize: '12px', color: '#333', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                title: f.name,
+              }, f.name),
+              h('div', { style: { fontSize: '10px', color: '#999', marginTop: '2px' } }, formatSize(f.size)),
+            ])
+          ])
+        )
+        children.push(h('div', {
+          style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }
+        }, fileCards))
+      }
+
+      // 2. 解析广播模式的设备标识 <!--claw:xxx-->
+      const clawMatch = actualContent.match(/^<!--claw:([^>]+)-->/)
       if (clawMatch) {
         const clawId = clawMatch[1]
-        actualContent = content.replace(clawMatch[0], '')
+        actualContent = actualContent.replace(clawMatch[0], '')
         children.push(h('div', {
           style: {
             fontSize: '11px',
@@ -1109,12 +1166,43 @@ const bubbleRoles = computed(() => ({
         }, clawId))
       }
 
-      if (actualContent) {
-        const html = marked.parse(actualContent.replace(/\r\n/g, '\n'), { breaks: false, gfm: true })
-        children.push(h('div', { 
-          innerHTML: html,
-          class: 'markdown-body'
-        }))
+      // 3. 渲染 Markdown 内容
+      if (actualContent.trim()) {
+        // 分离图片 Markdown 和文本
+        const imageRegex = /!\[image\]\(([^)]+)\)/g
+        const images = []
+        let imgMatch
+        while ((imgMatch = imageRegex.exec(actualContent)) !== null) {
+          images.push(imgMatch[1])
+        }
+        const textContent = actualContent.replace(imageRegex, '').trim()
+
+        // 渲染图片缩略图（和用户部分一致）
+        if (images.length > 0) {
+          const imgContainer = h('div', {
+            style: {
+              display: 'flex', flexWrap: 'wrap', gap: '6px',
+              marginBottom: textContent ? '8px' : 0,
+            }
+          }, images.map((src, i) =>
+            h(Image, {
+              key: i, src,
+              width: 120, height: 120,
+              style: { borderRadius: '8px', objectFit: 'cover', cursor: 'pointer' },
+              preview: { src },
+            })
+          ))
+          children.push(imgContainer)
+        }
+
+        // 渲染文本
+        if (textContent) {
+          const html = marked.parse(textContent.replace(/\r\n/g, '\n'), { breaks: false, gfm: true })
+          children.push(h('div', { 
+            innerHTML: html,
+            class: 'markdown-body'
+          }))
+        }
       }
 
       return children.length > 0 ? h('div', {}, children) : null
