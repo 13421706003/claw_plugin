@@ -12,11 +12,11 @@
           <text class="header-title">OPENHSD</text>
         </view>
         <view class="header-right">
-          <picker v-model="selectedClawId" :range="clawList" range-key="clawId"
+          <picker v-model="selectedClawIndex" :range="clawList" range-key="clawId"
             :class="{ 'device-select-bar': true, 'active': activeDropdown === 'device' }" style="margin-left: 16rpx;"
             @click="activeDropdown = 'device'; $event.stopPropagation()" @change="handleClawChange">
             <view class="device-select-input">
-              <text class="device-select-placeholder">选择设备</text>
+              <text class="device-select-placeholder">{{ clawList[selectedClawIndex]?.clawId || '选择设备' }}</text>
               <image src="/static/down.png" mode="aspectFit" style="width: 34rpx; height: 34rpx; color: #666;" />
             </view>
           </picker>
@@ -236,7 +236,7 @@ const showUserPanel = ref(false)
 const tokenCopied = ref(false)
 const clawList = ref([])
 const loadingStatus = ref(false)
-const selectedClawId = ref(null)
+const selectedClawIndex = ref(0)
 const deviceSearchQuery = ref('')
 const filteredClawList = ref([])
 const inputValue = ref('')
@@ -307,11 +307,13 @@ onMounted(async () => {
   const sys = uni.getSystemInfoSync()
   document.addEventListener('click', handleClickOutside)
   safeBottom.value = sys.safeAreaInsets?.bottom || 0
-  // 确保登录后连接
+  // 确保登录后连接，把 userId 直接传入以兼容"不记住登录"的情况
   if (currentToken.value) {
-    connect()
+    connect(currentUser.value?.userId)
     await fetchClawStatus()
-    if (clawList.value.length > 0 && !selectedClawId.value) {
+    // 设备加载完后自动选中并回显第一个
+    if (clawList.value.length > 0) {
+      selectedClawIndex.value = 0
       onClawChange(clawList.value[0].clawId)
     }
   }
@@ -321,8 +323,8 @@ onUnmounted(() => {
 })
 // 设备选择处理函数
 const handleClawChange = (e) => {
-  const index = e.detail.value
-  const clawId = clawList.value[index]?.clawId
+  selectedClawIndex.value = e.detail.value
+  const clawId = clawList.value[e.detail.value]?.clawId
   if (clawId) {
     onClawChange(clawId)
   }
@@ -348,7 +350,6 @@ const fetchClawStatus = async () => {
 }
 
 const onClawChange = async (clawId) => {
-  selectedClawId.value = clawId
   await selectClaw(clawId, currentToken.value)
 }
 
