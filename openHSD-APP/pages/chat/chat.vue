@@ -549,18 +549,33 @@ const renderMarkdown = (content) => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  gap: 10rpx;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .ws-badge {
   display: flex;
   align-items: center;
   gap: 6rpx;
-  padding: 6rpx 14rpx;
+  padding: 6rpx 12rpx;
+  border-radius: 20rpx;
+  background: rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ws-badge.connected {
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.ws-badge.disconnected {
+  background: rgba(255, 77, 79, 0.08);
 }
 
 .ws-badge.connected .ws-dot {
   background: #52c41a;
+  box-shadow: 0 0 0 3rpx rgba(82, 196, 26, 0.25);
 }
 
 .ws-badge.disconnected .ws-dot {
@@ -571,11 +586,13 @@ const renderMarkdown = (content) => {
   width: 10rpx;
   height: 10rpx;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .ws-text {
   font-size: 20rpx;
-  color: rgba(0, 0, 0, 0.863);
+  color: rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
 }
 
 .user-btn {
@@ -971,11 +988,22 @@ const renderMarkdown = (content) => {
 
 .device-select-input {
   display: flex;
-  gap: 4rpx;
+  gap: 6rpx;
   align-items: center;
-  padding: 6rpx 10rpx;
-  border-radius: 10rpx;
-  border: 2rpx solid rgba(0, 0, 0, 0.08);
+  padding: 6rpx 12rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.1);
+  max-width: 220rpx;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.device-select-placeholder {
+  font-size: 22rpx;
+  color: rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160rpx;
 }
 
 .device-select-placeholder {
@@ -987,19 +1015,19 @@ const renderMarkdown = (content) => {
 .quick-bar {
   display: flex;
   align-items: center;
-  padding-bottom: 12rpx;
+  padding-bottom: 8rpx;
   flex-shrink: 0;
   gap: 10rpx;
   overflow-x: auto;
 }
 
 .quick-item {
-  padding: 10rpx 18rpx;
-  background-color: #ffffff;
-  border: 2rpx solid rgba(0, 0, 0, 0.08);
-  border-radius: 10rpx;
+  padding: 8rpx 18rpx;
+  background-color: #f5f5f7;
+  border: 1rpx solid rgba(0, 0, 0, 0.06);
+  border-radius: 20rpx;
   flex-shrink: 0;
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  transition: background-color 0.15s ease;
 }
 
 .quick-item-active {
@@ -1206,14 +1234,14 @@ const renderMarkdown = (content) => {
 
 /* 消息列表 */
 .msg-list {
-  padding: 20rpx 20rpx 0;
+  padding: 24rpx 20rpx 8rpx;
 }
 
 .msg-row {
   display: flex;
-  align-items: flex-end;
-  gap: 12rpx;
-  margin-bottom: 20rpx;
+  align-items: flex-start;
+  gap: 14rpx;
+  margin-bottom: 28rpx;
 }
 
 .msg-row-user {
@@ -1224,23 +1252,26 @@ const renderMarkdown = (content) => {
   flex-direction: row;
 }
 
+/* 头像 */
 .msg-avatar {
-  width: 52rpx;
-  height: 52rpx;
+  width: 56rpx;
+  height: 56rpx;
   border-radius: 50%;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 4rpx;
 }
 
 .assistant-avatar {
-  background: #f2f2f7;
-  border: 1rpx solid rgba(0, 0, 0, 0.05);
+  background: #f0f0f5;
+  border: 1rpx solid rgba(0, 0, 0, 0.06);
 }
 
 .user-avatar-msg {
   background: linear-gradient(135deg, #ff4d4f, #d9363e);
+  box-shadow: 0 2rpx 8rpx rgba(255, 77, 79, 0.3);
 }
 
 .user-avatar-msg-text {
@@ -1249,10 +1280,11 @@ const renderMarkdown = (content) => {
   color: #fff;
 }
 
+/* 气泡容器 */
 .msg-bubble-wrap {
   display: flex;
   flex-direction: column;
-  max-width: 80%;
+  max-width: 75%;
   gap: 6rpx;
 }
 
@@ -1264,6 +1296,7 @@ const renderMarkdown = (content) => {
   align-items: flex-start;
 }
 
+/* 附件 */
 .attachment-row {
   display: flex;
   flex-wrap: wrap;
@@ -1274,88 +1307,91 @@ const renderMarkdown = (content) => {
 .attachment-img {
   width: 120rpx;
   height: 120rpx;
-  border-radius: 10rpx;
+  border-radius: 12rpx;
   object-fit: cover;
 }
 
+/* 气泡通用 */
 .msg-bubble {
-  padding: 16rpx 20rpx;
-  border-radius: 18rpx;
+  padding: 18rpx 22rpx;
+  border-radius: 20rpx;
   word-break: break-word;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
+/* 用户气泡：深色 */
 .bubble-user {
-  background: rgba(0, 0, 0, 0.84);
+  background: #1a1a1a;
   border-bottom-right-radius: 6rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.15);
 }
 
+/* AI 气泡：白色卡片感 */
 .bubble-assistant {
-  background: #f5f5f5;
+  background: #ffffff;
+  border: 1rpx solid rgba(0, 0, 0, 0.07);
   border-bottom-left-radius: 6rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
 }
 
 .bubble-text-user {
-  font-size: 26rpx;
+  font-size: 27rpx;
   color: #fff;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
+/* 打字动画 */
 .typing-dots {
   display: flex;
   align-items: center;
-  gap: 6rpx;
-  padding: 6rpx 4rpx;
+  gap: 8rpx;
+  padding: 8rpx 4rpx;
 }
 
 .dot {
   width: 8rpx;
   height: 8rpx;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.3);
-  animation: typingDot 1s ease-in-out infinite;
+  background: rgba(0, 0, 0, 0.25);
+  animation: typingDot 1.2s ease-in-out infinite;
 }
 
 .dot:nth-child(2) {
-  animation-delay: 0.15s;
+  animation-delay: 0.2s;
 }
 
 .dot:nth-child(3) {
-  animation-delay: 0.3s;
+  animation-delay: 0.4s;
 }
 
 @keyframes typingDot {
-
-  0%,
-  60%,
-  100% {
+  0%, 60%, 100% {
     transform: translateY(0);
-    opacity: 0.4;
+    opacity: 0.3;
   }
-
   30% {
-    transform: translateY(-6rpx);
+    transform: translateY(-8rpx);
     opacity: 1;
   }
 }
 
+/* Markdown 内容 */
 .bubble-md {
-  font-size: 26rpx;
-  color: rgba(0, 0, 0, 0.85);
-  line-height: 1.55;
+  font-size: 27rpx;
+  color: rgba(0, 0, 0, 0.82);
+  line-height: 1.65;
 }
 
 /* 输入区域 */
 .input-area {
   flex-shrink: 0;
   background: #fff;
-  padding: 12rpx 20rpx 30rpx;
-  margin-bottom: 60rpx;
+  padding: 12rpx 20rpx 20rpx;
+  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
-  gap: 12rpx;
+  gap: 10rpx;
   width: 100%;
-  /* 确保容器占满宽度 */
 }
 
 .attachment-preview {
@@ -1404,18 +1440,18 @@ const renderMarkdown = (content) => {
   display: flex;
   align-items: center;
   gap: 12rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.06);
-  border-radius: 16rpx;
-  padding: 10rpx 10rpx 10rpx 16rpx;
-  min-height: 76rpx;
+  background: #f7f7f8;
+  border: 1.5rpx solid rgba(0, 0, 0, 0.07);
+  border-radius: 20rpx;
+  padding: 12rpx 12rpx 12rpx 18rpx;
+  min-height: 80rpx;
   transition: all 0.2s ease;
 }
 
 .input-row.active {
+  background: #fff;
   border-color: #1677ff !important;
-  /* 蓝色边框（加!important防止覆盖） */
-  box-shadow: 0 0 0 2rpx rgba(22, 119, 255, 0.1) !important;
-  /* 蓝色阴影 */
+  box-shadow: 0 0 0 3rpx rgba(22, 119, 255, 0.12) !important;
 }
 
 .input-action-btn {
@@ -1459,35 +1495,35 @@ const renderMarkdown = (content) => {
 .input-buttons {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 10rpx;
   margin-left: auto;
-  /* 推到右侧 */
-  margin-top: 12rpx;
-  /* 增加与输入行的间距 */
+  margin-top: 4rpx;
 }
 
 .new-session-btn {
-  padding: 8rpx 16rpx;
-  border-radius: 10rpx;
-  border: 2rpx solid rgba(0, 0, 0, 0.08);
+  padding: 10rpx 20rpx;
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.1);
+  background: #f5f5f7;
   flex-shrink: 0;
 }
 
 .new-session-text {
   font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.5);
+  color: rgba(0, 0, 0, 0.45);
   white-space: nowrap;
 }
 
 .send-btn {
   width: auto;
-  min-width: 80rpx;
-  height: 52rpx;
-  border-radius: 10rpx;
-  background: #ff4d4f;
+  min-width: 90rpx;
+  height: 56rpx;
+  border-radius: 20rpx;
+  background: #1a1a1a;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 24rpx;
   flex-shrink: 0;
 }
 
@@ -1499,7 +1535,8 @@ const renderMarkdown = (content) => {
   font-size: 22rpx;
   color: #fff;
   line-height: 1;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: 1rpx;
 }
 
 .send-spinner {
