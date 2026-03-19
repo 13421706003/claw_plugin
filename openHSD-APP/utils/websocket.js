@@ -30,15 +30,16 @@ export function setOnMessage(callback) {
   onMessageCb = callback
 }
 
-export function connect() {
-  const userId = storage.getUser()?.userId
-  if (!userId) {
+export function connect(userId) {
+  // 优先使用传入的 userId，fallback 到本地存储（应对"不记住登录"的情况）
+  const uid = userId || storage.getUser()?.userId
+  if (!uid) {
     console.warn('[WS] 未登录，跳过连接')
     return
   }
 
   // 若 userId 更换，先关闭旧连接
-  if (socketTask && currentUserId !== userId) {
+  if (socketTask && currentUserId !== uid) {
     manualClose = true
     socketTask.close({ code: 1000 })
     socketTask = null
@@ -47,8 +48,8 @@ export function connect() {
   if (socketTask) return  // 已有连接
 
   manualClose    = false
-  currentUserId  = userId
-  const url      = buildUrl(userId)
+  currentUserId  = uid
+  const url      = buildUrl(uid)
   console.log(`[WS] 连接：${url}（第 ${retryCount} 次）`)
 
   socketTask = uni.connectSocket({
