@@ -52,6 +52,7 @@ export async function uploadFiles(files, userId, clawId) {
   const res = await fetch(`${API_BASE}/file/upload`, {
     method: 'POST',
     body: formData,
+    headers,
   })
 
   if (!res.ok) {

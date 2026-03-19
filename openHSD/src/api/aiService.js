@@ -62,16 +62,63 @@ setOnMessage((type, data) => {
 
 const handleFilePush = (data) => {
   const { clawId, fileUrl, fileName, fileType, fileSize } = data
+  console.log('[aiService] 收到文件推送：', { clawId, fileUrl, fileName, fileType, fileSize })
 
   if (currentClawId.value === clawId || currentClawId.value === '__ALL__') {
-    messages.value.push({
-      messageId: `file_${Date.now()}`,
-      role: 'assistant',
-      clawId,
-      content: '',
-      filePush: { url: fileUrl, name: fileName, type: fileType, size: fileSize },
-      loading: false
-    })
+    const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg']
+    const docMimes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument',
+      'application/vnd.ms-',
+      'text/plain',
+      'text/markdown',
+      'text/csv',
+      'application/json',
+      'application/zip',
+      'application/gzip',
+      'application/x-zip',
+      'application/x-gzip'
+    ]
+    
+    const ext = (fileName || '').split('.').pop().split('?')[0].toLowerCase()
+    const mimeType = (fileType || '').toLowerCase()
+    
+    const isImageByMime = mimeType.startsWith('image/')
+    const isImageByExt = imageExts.includes(ext)
+    const isDocumentByMime = docMimes.some(m => mimeType.includes(m))
+    const isDocumentByExt = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'json', 'zip', 'gz'].includes(ext)
+    
+    const isImage = isImageByMime || (isImageByExt && !isDocumentByMime && !isDocumentByExt)
+    
+    console.log('[aiService] 文件类型判断：', { ext, mimeType, isImageByMime, isImageByExt, isDocumentByMime, isDocumentByExt, isImage })
+
+    if (isImage) {
+      messages.value.push({
+        messageId: `file_${Date.now()}`,
+        role: 'assistant',
+        clawId,
+        content: '',
+        attachments: [{
+          uid: `push_${Date.now()}`,
+          name: fileName,
+          type: fileType || `image/${ext === 'jpg' ? 'jpeg' : ext}`,
+          size: fileSize || 0,
+          url: fileUrl,
+          base64: fileUrl,
+        }],
+        loading: false
+      })
+    } else {
+      messages.value.push({
+        messageId: `file_${Date.now()}`,
+        role: 'assistant',
+        clawId,
+        content: '',
+        filePush: { url: fileUrl, name: fileName, type: fileType, size: fileSize },
+        loading: false
+      })
+    }
   } else {
     console.log(`[aiService] 设备 ${clawId} 已回复`)
   }

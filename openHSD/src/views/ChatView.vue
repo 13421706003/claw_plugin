@@ -1,97 +1,19 @@
 <template>
   <div :style="layoutStyles.layout">
-    <!-- ==================== 侧边栏 ==================== -->
-    <div :style="siderStyles.sider">
-      <!-- Logo -->
-      <div
-        style="
-          display: flex;
-          align-items: center;
-          padding: 16px 20px;
-          gap: 10px;
-        "
-      >
-        <img
-          src="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*eco6RrQhxbMAAAAAAAAAAAAADgCCAQ/original"
-          alt="logo"
-          width="28"
-          height="28"
-          draggable="false"
-        />
-        <div>
-          <div style="font-weight: bold; font-size: 14px; line-height: 1.2">
-            OPENHSD
-          </div>
-          <div
-            style="
-              font-size: 10px;
-              color: #999;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-            "
-          >
-            GATEWAY DASHBOARD
-          </div>
-        </div>
-      </div>
-
-      <!-- 导航菜单 -->
-      <div style="flex: 1; overflow-y: auto; padding: 0 8px">
-        <template v-for="section in navSections" :key="section.title">
-          <div
-            style="
-              padding: 12px 12px 4px;
-              font-size: 11px;
-              color: #999;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-            "
-          >
-            <span>{{ section.title }}</span>
-            <span style="font-size: 10px; cursor: pointer">-</span>
-          </div>
-          <div v-for="item in section.items" :key="item.key">
-            <div
-              :style="{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                gap: '8px',
-                fontSize: '13px',
-                background: item.active ? '#ff4d4f15' : 'transparent',
-                color: item.active ? '#ff4d4f' : token.colorText,
-                borderLeft: item.active ? '3px solid #ff4d4f' : '3px solid transparent',
-                transition: 'all 0.2s',
-              }"
-            >
-              <component :is="item.icon" :style="{ fontSize: '14px' }" />
-              <span>{{ item.label }}</span>
-            </div>
-          </div>
-        </template>
-      </div>
-    </div>
-
     <!-- ==================== 主内容区 ==================== -->
     <div :style="chatStyles.chatArea">
       <!-- 顶部导航栏 -->
       <div :style="layoutStyles.header">
         <div :style="layoutStyles.headerLeft">
-          <Button
-            type="text"
-            size="small"
-            @click="siderCollapsed = !siderCollapsed"
-          >
-            <template #icon>
-              <MenuFoldOutlined v-if="!siderCollapsed" />
-              <MenuUnfoldOutlined v-else />
-            </template>
-          </Button>
+          <!-- Logo -->
+          <img
+            src="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*eco6RrQhxbMAAAAAAAAAAAAADgCCAQ/original"
+            alt="logo"
+            width="24"
+            height="24"
+            draggable="false"
+          />
+          <span style="font-weight: 600; font-size: 14px">OPENHSD</span>
         </div>
 
         <div :style="layoutStyles.headerRight">
@@ -277,7 +199,7 @@
       <!-- 聊天内容 -->
       <div :style="chatStyles.chatContent">
         <!-- 消息列表 / 欢迎界面 -->
-        <div :style="chatStyles.chatList">
+        <div ref="chatListRef" :style="chatStyles.chatList">
           <template v-if="messages.length > 0">
             <Bubble.List
               :items="bubbleItems"
@@ -407,7 +329,7 @@
 
 
 <script setup>
-import { ref, computed, h } from 'vue'
+import { ref, computed, h, watch, nextTick } from 'vue'
 import { marked } from 'marked'
 import {
   Bubble,
@@ -444,26 +366,16 @@ import {
   AppstoreAddOutlined,
   HeartOutlined,
   SmileOutlined,
-  CommentOutlined,
   ReloadOutlined,
   CopyOutlined,
   LikeOutlined,
   DislikeOutlined,
   CloudUploadOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   SettingOutlined,
   SyncOutlined,
   UserOutlined,
-  TeamOutlined,
-  CodeOutlined,
-  ThunderboltOutlined,
-  NodeIndexOutlined,
-  FileTextOutlined,
   DesktopOutlined,
-  BugOutlined,
   ApiOutlined,
-  RobotOutlined,
 } from '@ant-design/icons-vue'
 import { loading, messages, sendMessage, isConnected, connect, currentClawId, selectClaw, clearHistory } from '../api/aiService.js'
 import { uploadFiles, validateFile, formatSize } from '../api/fileService.js'
@@ -477,9 +389,9 @@ const router = useRouter()
 
 // ==================== State ====================
 const inputValue = ref('')
+const chatListRef = ref(null)
 const attachmentsOpen = ref(false)
 const attachedFiles = ref([])
-const siderCollapsed = ref(false)
 const currentSession = ref('Main Session')
 const showUserPanel = ref(false)
 const tokenCopied = ref(false)
@@ -497,6 +409,47 @@ onMounted(async () => {
     await selectClaw(clawList.value[0].clawId)
   }
 })
+
+// 滚动到底部的通用方法
+const scrollToBottom = () => {
+  nextTick(() => {
+    setTimeout(() => {
+      if (!chatListRef.value) return
+      
+      // 尝试找到 Bubble.List 内部的滚动容器
+      const selectors = [
+        '.ant-x-bubble-list',
+        '.ant-bubble-list',
+        '[class*="bubble-list"]',
+        '[style*="overflow"]'
+      ]
+      
+      let scrollContainer = null
+      for (const sel of selectors) {
+        const el = chatListRef.value.querySelector(sel)
+        if (el && el.scrollHeight > el.clientHeight) {
+          scrollContainer = el
+          break
+        }
+      }
+      
+      // 如果没找到内部容器，使用 chatListRef 本身
+      if (!scrollContainer) {
+        scrollContainer = chatListRef.value
+      }
+      
+      scrollContainer.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: 'smooth'
+      })
+    }, 50)
+  })
+}
+
+// 监听消息变化，自动滚动到底部
+watch(messages, () => {
+  scrollToBottom()
+}, { deep: true, flush: 'post' })
 
 // ==================== 用户操作 ====================
 const copyToken = () => {
@@ -564,20 +517,6 @@ const formatHeartbeat = (ts) => {
 const { token } = theme.useToken()
 
 // ==================== Styles ====================
-const siderStyles = computed(() => ({
-  sider: {
-    background: token.value.colorBgLayout,
-    width: siderCollapsed.value ? '0px' : '260px',
-    minWidth: siderCollapsed.value ? '0px' : '260px',
-    height: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    borderRight: `1px solid ${token.value.colorBorderSecondary}`,
-    transition: 'width 0.3s, min-width 0.3s',
-    overflow: 'hidden',
-  },
-}))
-
 const layoutStyles = computed(() => ({
   layout: {
     width: '100%',
@@ -652,40 +591,6 @@ const messageStyles = computed(() => ({
     backgroundPosition: 'bottom',
   },
 }))
-
-// ==================== Navigation Items ====================
-const navSections = ref([
-  {
-    title: '聊天',
-    items: [
-      { key: 'chat', label: '聊天', icon: CommentOutlined, active: true },
-    ],
-  },
-  {
-    title: '控制',
-    items: [],
-  },
-  {
-    title: '代理',
-    items: [
-      { key: 'agents', label: '代理', icon: RobotOutlined },
-      { key: 'skills', label: '技能', icon: ThunderboltOutlined },
-      { key: 'nodes', label: '节点', icon: NodeIndexOutlined },
-    ],
-  },
-  {
-    title: '设置',
-    items: [
-      { key: 'config', label: '配置', icon: SettingOutlined },
-      { key: 'debug', label: '调试', icon: BugOutlined },
-      { key: 'logs', label: '日志', icon: FileTextOutlined },
-    ],
-  },
-  {
-    title: '资源',
-    items: [{ key: 'docs', label: '文档', icon: FileTextOutlined }],
-  },
-])
 
 // ==================== Prompts Data ====================
 const HOT_TOPICS = {
@@ -997,26 +902,28 @@ const renderAttachmentHeader = () => {
 /** 根据 MIME 返回文件图标 emoji */
 function getFileIcon(mime) {
   if (!mime) return '📄'
-  if (mime === 'application/pdf') return '📕'
-  if (mime.includes('word') || mime.includes('msword')) return '📘'
-  if (mime.includes('excel') || mime.includes('spreadsheet')) return '📗'
-  if (mime.includes('powerpoint') || mime.includes('presentation')) return '📙'
-  if (mime === 'text/markdown' || mime === 'text/plain') return '📝'
-  if (mime === 'text/csv') return '📊'
-  if (mime === 'application/zip' || mime === 'application/gzip') return '📦'
-  if (mime === 'application/json') return '{ }'
+  const m = mime.toLowerCase()
+  if (m === 'application/pdf') return '📕'
+  if (m.includes('word') || m.includes('msword') || m.includes('wordprocessing')) return '📘'
+  if (m.includes('excel') || m.includes('spreadsheet')) return '📗'
+  if (m.includes('powerpoint') || m.includes('presentation')) return '📙'
+  if (m === 'text/markdown') return '📝'
+  if (m === 'text/plain') return '📄'
+  if (m === 'text/csv') return '📊'
+  if (m.includes('zip') || m.includes('gzip') || m.includes('compressed')) return '📦'
+  if (m === 'application/json') return '{ }'
   return '📄'
 }
 
-/** 根据 MIME 返回文件图标颜色 */
 function getFileColor(mime) {
   if (!mime) return '#8c8c8c'
-  if (mime === 'application/pdf') return '#ff4d4f'
-  if (mime.includes('word') || mime.includes('msword')) return '#1677ff'
-  if (mime.includes('excel') || mime.includes('spreadsheet')) return '#52c41a'
-  if (mime.includes('powerpoint') || mime.includes('presentation')) return '#fa8c16'
-  if (mime === 'application/zip' || mime === 'application/gzip') return '#faad14'
-  if (mime === 'application/json') return '#722ed1'
+  const m = mime.toLowerCase()
+  if (m === 'application/pdf') return '#ff4d4f'
+  if (m.includes('word') || m.includes('msword') || m.includes('wordprocessing')) return '#1677ff'
+  if (m.includes('excel') || m.includes('spreadsheet')) return '#52c41a'
+  if (m.includes('powerpoint') || m.includes('presentation')) return '#fa8c16'
+  if (m.includes('zip') || m.includes('gzip') || m.includes('compressed')) return '#faad14'
+  if (m === 'application/json') return '#722ed1'
   return '#8c8c8c'
 }
 
@@ -1033,30 +940,48 @@ const onPromptClick = (info) => {
 const bubbleItems = computed(() => {
   return messages.value.map((msg, index) => {
     let content = msg.content || ''
-    
-    // 处理附件：图片拼 Markdown，文件用特殊标记
+
+    // 处理附件：图片和文件都用 <!--img:url--> 和 <!--file:...--> 标记，不走 Markdown
     if (msg.attachments && msg.attachments.length > 0) {
       const imageExts = ['jpg','jpeg','png','gif','webp','bmp','svg']
+      const docMimes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument',
+        'application/vnd.ms-',
+        'text/plain',
+        'text/markdown',
+        'text/csv',
+        'application/json',
+        'application/zip',
+        'application/gzip'
+      ]
+      const docExts = ['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','md','csv','json','zip','gz']
+      
       const isImageAtt = a => {
-        if (a.type && a.type.startsWith('image/')) return true
-        // 兜底：从 base64 DataURL、url、name、objectKey 判断扩展名
+        if (a.type && a.type.toLowerCase().startsWith('image/')) {
+          const mimeType = (a.type || '').toLowerCase()
+          if (docMimes.some(m => mimeType.includes(m))) return false
+          return true
+        }
         if (a.base64 && a.base64.startsWith('data:image')) return true
         const src = a.url || a.name || a.objectKey || ''
         const ext = src.split('.').pop().split('?')[0].toLowerCase()
+        if (docExts.includes(ext)) return false
         return imageExts.includes(ext)
       }
       const imageAttachments = msg.attachments.filter(isImageAtt)
       const fileAttachments  = msg.attachments.filter(a => !isImageAtt(a))
 
-      // 图片：优先用 base64（本地预览），没有则用 url（历史记录）
+      // 图片用 <!--img:url--> 标记，避免 Markdown 字符串闪烁
       if (imageAttachments.length > 0) {
-        const imageMarkdown = imageAttachments
-          .map(att => `![image](${att.base64 || att.url || ''})`)
-          .join('\n')
-        content = imageMarkdown + (content ? '\n\n' + content : '')
+        const imgMarkers = imageAttachments
+          .map(att => `<!--img:${att.base64 || att.url || ''}-->`)
+          .join('')
+        content = imgMarkers + (content ? '\n\n' + content : '')
       }
 
-      // 文件用特殊注释标记，格式：<!--file:name|type|size|url-->
+      // 文件用 <!--file:...--> 标记
       if (fileAttachments.length > 0) {
         const fileMarkers = fileAttachments
           .map(att => `<!--file:${encodeURIComponent(att.name)}|${att.type || ''}|${att.size || 0}|${att.url || ''}-->`)
@@ -1064,16 +989,45 @@ const bubbleItems = computed(() => {
         content = fileMarkers + content
       }
     }
-    
+
     // 广播模式下，在 content 前面注入设备标识，格式：<!--claw:xxx-->
     if (msg.clawId && msg.role === 'assistant') {
       content = `<!--claw:${msg.clawId}-->${content}`
     }
 
-    // 处理文件推送
+    // filePush 文件推送
     if (msg.filePush) {
       const f = msg.filePush
-      content = `<!--file:${encodeURIComponent(f.name)}|${f.type || ''}|${f.size || 0}|${f.url || ''}-->${content}`
+      const imageExts = ['jpg','jpeg','png','gif','webp','bmp','svg']
+      const docMimes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument',
+        'application/vnd.ms-',
+        'text/plain',
+        'text/markdown',
+        'text/csv',
+        'application/json',
+        'application/zip',
+        'application/gzip'
+      ]
+      const docExts = ['pdf','doc','docx','xls','xlsx','ppt','pptx','txt','md','csv','json','zip','gz']
+      
+      const ext = (f.name || '').split('.').pop().split('?')[0].toLowerCase()
+      const mimeType = (f.type || '').toLowerCase()
+      
+      const isImageByMime = mimeType.startsWith('image/')
+      const isImageByExt = imageExts.includes(ext)
+      const isDocumentByMime = docMimes.some(m => mimeType.includes(m))
+      const isDocumentByExt = docExts.includes(ext)
+      
+      const isImage = isImageByMime || (isImageByExt && !isDocumentByMime && !isDocumentByExt)
+      
+      if (isImage) {
+        content = `<!--img:${f.url}-->` + content
+      } else {
+        content = `<!--file:${encodeURIComponent(f.name)}|${f.type || ''}|${f.size || 0}|${f.url || ''}-->` + content
+      }
     }
 
     return {
@@ -1093,12 +1047,34 @@ const bubbleRoles = computed(() => ({
       if (!content) return null
 
       const children = []
+      let actualContent = content
 
-      // 1. 解析文件标记 <!--file:name|type|size|url-->
+      // 1. 解析图片标记 <!--img:url-->（无闪烁）
+      const imgTagRegex = /<!--img:([^>]*)-->/g
+      const imgUrls = []
+      let imgTagMatch
+      while ((imgTagMatch = imgTagRegex.exec(actualContent)) !== null) {
+        imgUrls.push(imgTagMatch[1])
+      }
+      actualContent = actualContent.replace(imgTagRegex, '')
+      if (imgUrls.length > 0) {
+        children.push(h('div', {
+          style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }
+        }, imgUrls.map((src, i) =>
+          h(Image, {
+            key: i, src,
+            width: 120, height: 120,
+            style: { borderRadius: '8px', objectFit: 'cover', cursor: 'pointer' },
+            preview: { src },
+          })
+        )))
+      }
+
+      // 2. 解析文件标记 <!--file:name|type|size|url-->
       const fileRegex = /<!--file:([^|]*)\|([^|]*)\|([^|]*)\|([^>]*)-->/g
       const fileItems = []
       let fileMatch
-      while ((fileMatch = fileRegex.exec(content)) !== null) {
+      while ((fileMatch = fileRegex.exec(actualContent)) !== null) {
         fileItems.push({
           name: decodeURIComponent(fileMatch[1]),
           type: fileMatch[2],
@@ -1106,9 +1082,7 @@ const bubbleRoles = computed(() => ({
           url:  fileMatch[4],
         })
       }
-      let actualContent = content.replace(fileRegex, '')
-
-      // 渲染文件卡片
+      actualContent = actualContent.replace(fileRegex, '')
       if (fileItems.length > 0) {
         const fileCards = fileItems.map((f, i) =>
           h('a', {
@@ -1117,92 +1091,42 @@ const bubbleRoles = computed(() => ({
             target: '_blank',
             rel: 'noopener noreferrer',
             style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 10px',
-              borderRadius: '8px',
-              border: '1px solid #e8e8e8',
-              background: '#fafafa',
-              textDecoration: 'none',
-              color: 'inherit',
-              minWidth: '160px',
-              maxWidth: '260px',
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 10px', borderRadius: '8px',
+              border: '1px solid #e8e8e8', background: '#fafafa',
+              textDecoration: 'none', color: 'inherit',
+              minWidth: '160px', maxWidth: '260px',
               cursor: f.url ? 'pointer' : 'default',
             }
           }, [
             h('span', { style: { fontSize: '22px', flexShrink: 0, color: getFileColor(f.type) } }, getFileIcon(f.type)),
             h('div', { style: { minWidth: 0 } }, [
-              h('div', {
-                style: { fontSize: '12px', color: '#333', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-                title: f.name,
-              }, f.name),
+              h('div', { style: { fontSize: '12px', color: '#333', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, title: f.name }, f.name),
               h('div', { style: { fontSize: '10px', color: '#999', marginTop: '2px' } }, formatSize(f.size)),
             ])
           ])
         )
-        children.push(h('div', {
-          style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }
-        }, fileCards))
+        children.push(h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' } }, fileCards))
       }
 
-      // 2. 解析广播模式的设备标识 <!--claw:xxx-->
+      // 3. 解析广播模式设备标识 <!--claw:xxx-->
       const clawMatch = actualContent.match(/^<!--claw:([^>]+)-->/)
       if (clawMatch) {
-        const clawId = clawMatch[1]
         actualContent = actualContent.replace(clawMatch[0], '')
         children.push(h('div', {
           style: {
-            fontSize: '11px',
-            color: '#1677ff',
-            background: '#e6f4ff',
-            border: '1px solid #91caff',
-            borderRadius: '4px',
-            padding: '1px 6px',
-            marginBottom: '6px',
-            display: 'inline-block',
-            fontFamily: 'monospace',
+            fontSize: '11px', color: '#1677ff', background: '#e6f4ff',
+            border: '1px solid #91caff', borderRadius: '4px',
+            padding: '1px 6px', marginBottom: '6px',
+            display: 'inline-block', fontFamily: 'monospace',
           }
-        }, clawId))
+        }, clawMatch[1]))
       }
 
-      // 3. 渲染 Markdown 内容
+      // 4. 渲染剩余 Markdown 文本
       if (actualContent.trim()) {
-        // 分离图片 Markdown 和文本
-        const imageRegex = /!\[image\]\(([^)]+)\)/g
-        const images = []
-        let imgMatch
-        while ((imgMatch = imageRegex.exec(actualContent)) !== null) {
-          images.push(imgMatch[1])
-        }
-        const textContent = actualContent.replace(imageRegex, '').trim()
-
-        // 渲染图片缩略图（和用户部分一致）
-        if (images.length > 0) {
-          const imgContainer = h('div', {
-            style: {
-              display: 'flex', flexWrap: 'wrap', gap: '6px',
-              marginBottom: textContent ? '8px' : 0,
-            }
-          }, images.map((src, i) =>
-            h(Image, {
-              key: i, src,
-              width: 120, height: 120,
-              style: { borderRadius: '8px', objectFit: 'cover', cursor: 'pointer' },
-              preview: { src },
-            })
-          ))
-          children.push(imgContainer)
-        }
-
-        // 渲染文本
-        if (textContent) {
-          const html = marked.parse(textContent.replace(/\r\n/g, '\n'), { breaks: false, gfm: true })
-          children.push(h('div', { 
-            innerHTML: html,
-            class: 'markdown-body'
-          }))
-        }
+        const html = marked.parse(actualContent.replace(/\r\n/g, '\n'), { breaks: false, gfm: true })
+        children.push(h('div', { innerHTML: html, class: 'markdown-body' }))
       }
 
       return children.length > 0 ? h('div', {}, children) : null
@@ -1215,12 +1139,33 @@ const bubbleRoles = computed(() => ({
 
       const children = []
 
-      // 1. 解析文件标记 <!--file:name|type|size|url-->
+      // 1. 解析图片标记 <!--img:url-->
+      const imgTagRegex = /<!--img:([^>]*)-->/g
+      const imgUrls = []
+      let imgTagMatch
+      let restContent = content
+      while ((imgTagMatch = imgTagRegex.exec(restContent)) !== null) {
+        imgUrls.push(imgTagMatch[1])
+      }
+      restContent = restContent.replace(imgTagRegex, '')
+      if (imgUrls.length > 0) {
+        children.push(h('div', {
+          style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }
+        }, imgUrls.map((src, i) =>
+          h(Image, {
+            key: i, src,
+            width: 120, height: 120,
+            style: { borderRadius: '8px', objectFit: 'cover', cursor: 'pointer' },
+            preview: { src },
+          })
+        )))
+      }
+
+      // 2. 解析文件标记 <!--file:name|type|size|url-->
       const fileRegex = /<!--file:([^|]*)\|([^|]*)\|([^|]*)\|([^>]*)-->/g
       const fileItems = []
       let fileMatch
-      let restContent = content
-      while ((fileMatch = fileRegex.exec(content)) !== null) {
+      while ((fileMatch = fileRegex.exec(restContent)) !== null) {
         fileItems.push({
           name: decodeURIComponent(fileMatch[1]),
           type: fileMatch[2],
@@ -1228,7 +1173,7 @@ const bubbleRoles = computed(() => ({
           url:  fileMatch[4],
         })
       }
-      restContent = content.replace(fileRegex, '')
+      restContent = restContent.replace(fileRegex, '')
 
       // 渲染文件卡片
       if (fileItems.length > 0) {
@@ -1268,12 +1213,12 @@ const bubbleRoles = computed(() => ({
         }, fileCards))
       }
 
-      // 2. 分离图片 Markdown 和文本
-      const imageRegex = /!\[image\]\(([^)]+)\)/g
+      // 2. 分离图片 Markdown 和文本（匹配任意 alt text）
+      const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
       const images = []
       let imgMatch
       while ((imgMatch = imageRegex.exec(restContent)) !== null) {
-        images.push(imgMatch[1])
+        images.push(imgMatch[2]) // 第2个捕获组是 URL
       }
       const textContent = restContent.replace(imageRegex, '').trim()
 
