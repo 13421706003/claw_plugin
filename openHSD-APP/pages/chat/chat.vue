@@ -12,7 +12,7 @@
           <text class="header-title">OPENHSD</text>
         </view>
         <view class="header-right">
-          <picker v-model="selectedClawIndex" :range="clawList" range-key="clawId"
+          <picker v-if="clawList.length > 0" v-model="selectedClawIndex" :range="clawList" range-key="clawId"
             :class="{ 'device-select-bar': true, 'active': activeDropdown === 'device' }" style="margin-left: 16rpx;"
             @click="activeDropdown = 'device'; $event.stopPropagation()" @change="handleClawChange">
             <view class="device-select-input">
@@ -20,6 +20,10 @@
               <image src="/static/down.png" mode="aspectFit" style="width: 34rpx; height: 34rpx; color: #666;" />
             </view>
           </picker>
+          
+          <view v-else class="device-select-empty" style="margin-left: 16rpx;">
+            <text class="device-empty-text">暂无在线设备</text>
+          </view>
 
           <view class="ws-badge" :class="isConnected ? 'connected' : 'disconnected'">
             <view class="ws-dot"></view>
@@ -166,11 +170,8 @@
                   <rich-text :nodes="renderMarkdown(msg.content)"></rich-text>
                 </view>
               </view>
-            </view>
-            <view v-if="msg.role === 'user'" class="msg-avatar user-avatar-msg">
-              <text class="user-avatar-msg-text">{{ userInitial }}</text>
-            </view>
-          </view>
+             </view>
+           </view>
           <view style="height: 24rpx;"></view>
         </view>
       </scroll-view>
@@ -189,10 +190,28 @@
           <!-- 附件预览网格 - 在顶部 -->
           <view v-if="attachments.length > 0" class="attachment-preview-container">
             <view class="attachment-preview-list">
-              <view v-for="att in attachments" :key="att.uid" class="att-item">
-                <image :src="att.base64" mode="aspectFill" class="att-thumb" @tap="previewImage(att.base64)" />
-                <view class="att-remove" @tap="removeAttachment(att.uid)">
-                  <text class="att-remove-text">×</text>
+              <!-- 所有附件 - 根据类型显示不同样式 -->
+              <view v-for="att in attachments" :key="att.uid">
+                <!-- 图片附件 -->
+                <view v-if="att.isImage" class="att-item">
+                  <image :src="att.base64" mode="aspectFill" class="att-thumb" @tap="previewImage(att.base64)" />
+                  <view class="att-remove" @tap="removeAttachment(att.uid)">
+                    <text class="att-remove-text">×</text>
+                  </view>
+                </view>
+                
+                <!-- 文档附件 -->
+                <view v-else class="att-item-doc">
+                  <view class="doc-icon-wrap">
+                    <text class="doc-icon">{{ getFileIcon(att.type) }}</text>
+                  </view>
+                  <view class="doc-info">
+                    <text class="doc-name">{{ att.name }}</text>
+                    <text class="doc-size">{{ att.size }}</text>
+                  </view>
+                  <view class="att-remove" @tap="removeAttachment(att.uid)">
+                    <text class="att-remove-text">×</text>
+                  </view>
                 </view>
               </view>
             </view>
@@ -200,7 +219,7 @@
           <!-- 输入框行 -->
           <view class="input-row" :class="{ 'active': inputRowActive }">
             <view class="input-action-btn" @tap="chooseImage">
-              <image src="/static/document.png" mode="aspectFit" style="width: 30rpx; height: 30rpx;" />
+              <image src="/static/document.png" mode="aspectFit" style="width: 34rpx; height: 34rpx;" />
             </view>
             <textarea class="input-box" v-model="inputValue" placeholder="请输入消息内容..."
               placeholder-class="input-placeholder" :disabled="loading" auto-height :max-height="120" confirm-type="send"
@@ -406,11 +425,86 @@ const onLogout = () => {
 }
 
 const onNewSession = async () => {
+  // 添加脉冲效果类名
+  const newSessionBtn = document.querySelector('.new-session-btn')
+  if (newSessionBtn) {
+    newSessionBtn.classList.add('pulse-active')
+    // 动画完成后移除类名
+    setTimeout(() => {
+      newSessionBtn.classList.remove('pulse-active')
+    }, 600)
+  }
+  
   await clearHistory(currentToken.value)
   uni.showToast({ title: '已清空', icon: 'none', duration: 1200 })
 }
 
-const chooseImage = () => {
+// ============ 文件类型识别和处理函数 ============
+
+// 文件类型配置
+const FILE_TYPE_CONFIG = {
+  image: {
+    exts: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'],
+    icon: '🖼️',
+    name: '图片',
+    accept: 'image/*'
+  },
+  word: {
+    exts: ['doc', 'docx'],
+    icon: '📄',
+    name: 'Word',
+    accept: '.doc,.docx'
+  },
+  excel: {
+    exts: ['xls', 'xlsx'],
+    icon: '📊',
+    name: 'Excel',
+    accept: '.xls,.xlsx'
+  },
+  pdf: {
+    exts: ['pdf'],
+    icon: '📕',
+    name: 'PDF',
+    accept: '.pdf'
+  },
+  markdown: {
+    exts: ['md', 'markdown'],
+    icon: '📝',
+    name: 'Markdown',
+    accept: '.md,.markdown'
+  }
+}
+
+// 获取文件类型
+const getFileType = (filename) => {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  for (const [type, config] of Object.entries(FILE_TYPE_CONFIG)) {
+    if (config.exts.includes(ext)) return type
+  }
+  return 'unknown'
+}
+
+// 获取文件图标
+const getFileIcon = (type) => {
+  return FILE_TYPE_CONFIG[type]?.icon || '📎'
+}
+
+// 格式化文件大小
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i]
+}
+
+// 验证文件大小（50MB）
+const validateFileSize = (bytes) => {
+  const MAX_SIZE = 50 * 1024 * 1024 // 50MB
+  return bytes <= MAX_SIZE
+}
+
+const chooseFile = () => {
   const sysInfo = uni.getSystemInfoSync()
   const platform = sysInfo.platform?.toLowerCase() || ''
   const isH5 = platform === 'web' || platform === 'h5' || typeof document !== 'undefined'
@@ -418,43 +512,70 @@ const chooseImage = () => {
   console.log('[Chat] 平台检测:', { platform, isH5 })
   
   // 定义 H5 文件选择函数
-  const chooseImageFromH5 = () => {
+  const chooseFileFromH5 = () => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/*'
+    // 支持所有类型文件
+    input.accept = 'image/*,.doc,.docx,.xls,.xlsx,.pdf,.md'
     input.multiple = true
     
     input.onchange = (e) => {
       const files = e.target.files
       if (!files || files.length === 0) return
       
-      for (let i = 0; i < Math.min(files.length, 3); i++) {
+      for (let i = 0; i < files.length; i++) {
         const file = files[i]
-        const reader = new FileReader()
         
-        reader.onload = (event) => {
-          const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
-          const mime = file.type || (ext === 'png' ? 'image/png' : 'image/jpeg')
-          const base64 = event.target.result
+        // 验证文件大小
+        if (!validateFileSize(file.size)) {
+          uni.showToast({ title: `文件 ${file.name} 超过 50MB 限制`, icon: 'none', duration: 1000 })
+          continue
+        }
+        
+        const type = getFileType(file.name)
+        const ext = file.name.split('.').pop()?.toLowerCase()
+        const sizeStr = formatFileSize(file.size)
+        
+        if (type === 'image') {
+          // 图片：读取为 base64
+          const reader = new FileReader()
           
-          // 计算文件大小
-          const sizeInKB = (file.size / 1024).toFixed(1)
+          reader.onload = (event) => {
+            const mime = file.type || 'image/jpeg'
+            
+            attachments.value.push({
+              uid: Date.now() + '-' + i,
+              name: file.name,
+              size: sizeStr,
+              sizeRaw: file.size,
+              type: type,
+              ext: ext,
+              base64: event.target.result,
+              isImage: true
+            })
+            console.log('[Chat] H5 图片上传成功:', file.name, sizeStr)
+          }
           
+          reader.onerror = () => {
+            console.error('[Chat] 文件读取失败:', file.name)
+            uni.showToast({ title: `文件 ${file.name} 读取失败`, icon: 'none', duration: 1000 })
+          }
+          
+          reader.readAsDataURL(file)
+        } else {
+          // 文档：仅记录元数据，不读取内容
           attachments.value.push({
             uid: Date.now() + '-' + i,
-            name: file.name || `image_${Date.now()}.${ext}`,
-            size: sizeInKB,
-            base64: base64
+            name: file.name,
+            size: sizeStr,
+            sizeRaw: file.size,
+            type: type,
+            ext: ext,
+            base64: null,
+            isImage: false
           })
-          console.log('[Chat] H5 文件上传成功:', file.name, `${sizeInKB} KB`)
+          console.log('[Chat] H5 文件上传成功:', file.name, sizeStr)
         }
-        
-        reader.onerror = () => {
-          console.error('[Chat] 文件读取失败:', file.name)
-          uni.showToast({ title: '文件读取失败', icon: 'none', duration: 1000 })
-        }
-        
-        reader.readAsDataURL(file)
       }
     }
     
@@ -462,14 +583,27 @@ const chooseImage = () => {
   }
   
   // 定义原生平台文件选择函数
-  const chooseImageFromNative = () => {
-    uni.chooseImage({
-      count: 3,
-      sizeType: ['compressed'],
-      sourceType: ['album', 'camera'],
+  const chooseFileFromNative = () => {
+    // 原生平台：使用 uni.chooseFile 支持所有文件类型
+    uni.chooseFile({
+      count: 9999,  // 无限制
+      type: 'all',
       success: (res) => {
-        console.log('[Chat] uni.chooseImage 成功，返回:', res)
+        console.log('[Chat] uni.chooseFile 成功，返回:', res)
         res.tempFilePaths?.forEach((path, i) => {
+          // 验证文件大小
+          if (res.tempFiles && res.tempFiles[i]) {
+            const fileSize = res.tempFiles[i].size || 0
+            if (!validateFileSize(fileSize)) {
+              uni.showToast({ title: `文件超过 50MB 限制`, icon: 'none', duration: 1000 })
+              return
+            }
+          }
+          
+          const filename = path.split('/').pop() || 'unknown'
+          const type = getFileType(filename)
+          const ext = filename.split('.').pop()?.toLowerCase()
+          
           // 尝试使用 FileSystemManager
           if (uni.getFileSystemManager && typeof uni.getFileSystemManager === 'function') {
             try {
@@ -477,21 +611,38 @@ const chooseImage = () => {
                 filePath: path,
                 encoding: 'base64',
                 success: (r) => {
-                  const ext = path.split('.').pop()?.toLowerCase() || 'jpg'
-                  const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
-                  // 计算文件大小（base64转换后的大小估算）
-                  const sizeInKB = (r.data.length / 1024).toFixed(1)
-                  attachments.value.push({
-                    uid: Date.now() + '-' + i,
-                    name: `image_${Date.now()}.${ext}`,
-                    size: sizeInKB,
-                    base64: `data:${mime};base64,${r.data}`
-                  })
-                  console.log('[Chat] 原生平台文件读取成功:', sizeInKB, 'KB')
+                  const sizeStr = formatFileSize(r.data.length)
+                  
+                  if (type === 'image') {
+                    const mime = getImageMimeType(ext)
+                    attachments.value.push({
+                      uid: Date.now() + '-' + i,
+                      name: filename,
+                      size: sizeStr,
+                      sizeRaw: r.data.length,
+                      type: type,
+                      ext: ext,
+                      base64: `data:${mime};base64,${r.data}`,
+                      isImage: true
+                    })
+                  } else {
+                    // 文档：不存储 base64，因为太大
+                    attachments.value.push({
+                      uid: Date.now() + '-' + i,
+                      name: filename,
+                      size: sizeStr,
+                      sizeRaw: r.data.length,
+                      type: type,
+                      ext: ext,
+                      base64: null,
+                      isImage: false
+                    })
+                  }
+                  console.log('[Chat] 原生平台文件读取成功:', filename, sizeStr)
                 },
                 fail: (err) => {
                   console.error('[Chat] FileSystemManager 读取失败:', err)
-                  uni.showToast({ title: '文件读取失败', icon: 'none', duration: 1000 })
+                  uni.showToast({ title: `文件 ${filename} 读取失败`, icon: 'none', duration: 1000 })
                 }
               })
             } catch (e) {
@@ -499,35 +650,12 @@ const chooseImage = () => {
               uni.showToast({ title: '文件读取异常', icon: 'none', duration: 1000 })
             }
           } else {
-            console.warn('[Chat] getFileSystemManager 不可用，尝试备降到 FileReader')
-            // 备降方案：如果是 H5 也支持 FileReader，则尝试使用
-            if (typeof FileReader !== 'undefined' && typeof fetch !== 'undefined') {
-              fetch(`file://${path}`)
-                .then(res => res.blob())
-                .then(blob => {
-                  const reader = new FileReader()
-                  reader.onload = (e) => {
-                    const ext = path.split('.').pop()?.toLowerCase() || 'jpg'
-                    const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
-                    attachments.value.push({
-                      uid: Date.now() + '-' + i,
-                      name: `image_${Date.now()}.${ext}`,
-                      base64: e.target.result
-                    })
-                  }
-                  reader.readAsDataURL(blob)
-                })
-                .catch(() => {
-                  uni.showToast({ title: '该平台不支持文件读取', icon: 'none', duration: 1000 })
-                })
-            } else {
-              uni.showToast({ title: '该平台不支持文件读取', icon: 'none', duration: 1000 })
-            }
+            uni.showToast({ title: '该平台不支持文件读取', icon: 'none', duration: 1000 })
           }
         })
       },
       fail: (err) => {
-        console.error('[Chat] uni.chooseImage 失败:', err)
+        console.error('[Chat] uni.chooseFile 失败:', err)
       }
     })
   }
@@ -535,12 +663,28 @@ const chooseImage = () => {
   // 根据平台选择对应的处理方式
   if (isH5) {
     console.log('[Chat] 使用 H5 文件选择')
-    chooseImageFromH5()
+    chooseFileFromH5()
   } else {
     console.log('[Chat] 使用原生平台文件选择')
-    chooseImageFromNative()
+    chooseFileFromNative()
   }
 }
+
+// 获取图片 MIME 类型
+const getImageMimeType = (ext) => {
+  const mimeMap = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'bmp': 'image/bmp',
+    'webp': 'image/webp'
+  }
+  return mimeMap[ext?.toLowerCase()] || 'image/jpeg'
+}
+
+// 保留 chooseImage 作为向后兼容的别名
+const chooseImage = chooseFile
 
 const removeAttachment = (uid) => {
   attachments.value = attachments.value.filter(a => a.uid !== uid)
@@ -771,12 +915,12 @@ const renderMarkdown = (content) => {
 .chat-header-right {
   display: flex;
   align-items: center;
-  gap: 8rpx;
+  gap: 10rpx;
   justify-content: center;
   /* 水平居中 */
   padding-left: 16rpx;
   /* 增加左侧内边距，让居中更明显 */
-  width: auto;
+  /* width: auto; */
   /* 自适应宽度，避免占满右侧 */
 }
 
@@ -788,7 +932,7 @@ const renderMarkdown = (content) => {
   padding: 6rpx 10rpx;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  margin: 0;
 }
 
 .session-picker.active {
@@ -807,6 +951,7 @@ const renderMarkdown = (content) => {
 /* 选择器文字 */
 .picker-text {
   font-size: 18rpx;
+  line-height: 1.4;
   color: #333;
 }
 
@@ -1001,6 +1146,7 @@ const renderMarkdown = (content) => {
 
 .device-select-placeholder {
   font-size: 22rpx;
+  line-height: 1.4;
   color: rgba(0, 0, 0, 0.6);
 }
 
@@ -1115,10 +1261,9 @@ const renderMarkdown = (content) => {
   gap: 6rpx;
   align-items: center;
   padding: 6rpx 12rpx;
-  border-radius: 20rpx;
+  border-radius: 10rpx;
   border: 1rpx solid rgba(0, 0, 0, 0.1);
   max-width: 220rpx;
-  background: rgba(0, 0, 0, 0.03);
 }
 
 .device-select-placeholder {
@@ -1133,6 +1278,21 @@ const renderMarkdown = (content) => {
 .device-select-placeholder {
   font-size: 22rpx;
   color: rgba(0, 0, 0, 0.6);
+}
+
+/* 设备选择框空状态 */
+.device-select-empty {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 16rpx;
+  border-radius: 10rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.device-empty-text {
+  font-size: 22rpx;
+  color: rgba(0, 0, 0, 0.45);
 }
 
 /* 快捷功能栏 */
@@ -1166,6 +1326,7 @@ const renderMarkdown = (content) => {
 .quick-item-text {
   font-size: 24rpx;
   color: rgba(0, 0, 0, 0.6);
+  line-height: 2.0;
   white-space: nowrap;
 }
 
@@ -1417,14 +1578,20 @@ const renderMarkdown = (content) => {
 
 .bubble-wrap-user {
   align-items: flex-end;
-  max-width: 75%;
+  max-width: 75vw;
+  margin-left: 20rpx;
+  word-wrap: break-word;
+  word-break: break-word;
 }
 
 .bubble-wrap-assistant {
   align-items: flex-start;
-  max-width: 85%;
+  max-width: 75vw;
+  margin-right: 20rpx;
   min-width: 0;
   flex: 1;
+  word-wrap: break-word;
+  word-break: break-word;
 }
 
 /* 附件 */
@@ -1565,7 +1732,7 @@ const renderMarkdown = (content) => {
   width: 100%;
 }
 
-/* 附件项 */
+/* 附件项 - 图片 */
 .att-item {
   display: flex;
   position: relative;
@@ -1598,6 +1765,65 @@ const renderMarkdown = (content) => {
   }
 }
 
+/* 附件项 - 文档 */
+.att-item-doc {
+  width: 120rpx;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 8rpx;
+  border: 1rpx solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  padding: 8rpx 6rpx;
+  position: relative;
+  flex-shrink: 0;
+  animation: attachmentSlideIn 0.3s ease-out;
+  overflow: hidden;
+}
+
+.doc-icon-wrap {
+  font-size: 36rpx;
+  line-height: 1;
+  margin-top: 2rpx;
+}
+
+.doc-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.doc-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rpx;
+  min-height: 0;
+  width: 100%;
+}
+
+.doc-name {
+  font-size: 18rpx;
+  color: rgba(0, 0, 0, 0.85);
+  line-height: 1.3;
+  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  max-width: 100%;
+  text-align: center;
+  padding: 0 2rpx;
+}
+
+.doc-size {
+  font-size: 16rpx;
+  color: rgba(0, 0, 0, 0.45);
+  line-height: 1.2;
+}
+
 /* 删除按钮 */
 .att-remove {
   position: absolute;
@@ -1612,6 +1838,7 @@ const renderMarkdown = (content) => {
   justify-content: center;
   transition: all 0.2s ease;
   cursor: pointer;
+  z-index: 10;
 }
 
 .att-remove:active {
@@ -1683,7 +1910,7 @@ const renderMarkdown = (content) => {
 
 .input-placeholder {
   color: rgba(0, 0, 0, 0.25);
-  line-height: 1.5;
+  line-height: 1.8;
   font-size: 24rpx;
 }
 
@@ -1702,7 +1929,6 @@ const renderMarkdown = (content) => {
   padding: 0 20rpx;
   border-radius: 20rpx;
   border: 1rpx solid rgba(0, 0, 0, 0.1);
-  background: #f5f5f7;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1726,10 +1952,25 @@ const renderMarkdown = (content) => {
   justify-content: center;
   padding: 0 24rpx;
   flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.send-btn:active {
+  box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.6);
+  animation: pulse-red 0.4s ease-out;
 }
 
 .send-btn-active {
   background: #ff4d4f;
+}
+
+@keyframes pulse-red {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 0 12rpx rgba(255, 77, 79, 0);
+  }
 }
 
 .send-icon {
@@ -1756,6 +1997,26 @@ const renderMarkdown = (content) => {
 
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* New Session 按钮脉冲效果 */
+.new-session-btn.pulse-active {
+  background: rgba(22, 119, 255, 0.15);
+  box-shadow: 0 0 0 0 rgba(22, 119, 255, 0.6);
+  animation: pulse-blue 0.6s ease-out;
+}
+
+.new-session-btn.pulse-active .new-session-text {
+  color: #1677ff;
+}
+
+@keyframes pulse-blue {
+  0% {
+    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 0 16rpx rgba(22, 119, 255, 0);
   }
 }
 </style>
