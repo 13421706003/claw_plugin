@@ -2,34 +2,27 @@
   <view class="chat-page">
     <!-- 主内容区域 -->
     <view class="main-content">
-      <!-- 顶部导航栏 -->
-      <view class="header">
-        <view class="header-left">
-          <view class="header-logo">
-            <image src="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*eco6RrQhxbMAAAAAAAAAAAAADgCCAQ/original"
-              mode="aspectFit" style="width: 32rpx; height: 32rpx;" />
+      <!-- 顶栏：品牌 + 连接状态 + 账号（与 Web 端一致的浅色导航） -->
+      <view class="top-bar">
+        <view class="top-bar-left">
+          <view class="top-logo">
+            <image
+              src="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*eco6RrQhxbMAAAAAAAAAAAAADgCCAQ/original"
+              mode="aspectFit"
+              class="top-logo-img"
+            />
           </view>
-          <text class="header-title">OPENHSD</text>
+          <view class="top-brand">
+            <text class="top-brand-name">OPENHSD</text>
+            <text class="top-brand-sub">网关聊天</text>
+          </view>
         </view>
-        <view class="header-right">
-          <picker v-if="clawList.length > 0" v-model="selectedClawIndex" :range="clawList" range-key="clawId"
-            :class="{ 'device-select-bar': true, 'active': activeDropdown === 'device' }" style="margin-left: 16rpx;"
-            @click="activeDropdown = 'device'; $event.stopPropagation()" @change="handleClawChange">
-            <view class="device-select-input">
-              <text class="device-select-placeholder">{{ clawList[selectedClawIndex]?.clawId || '选择设备' }}</text>
-              <image src="/static/down.png" mode="aspectFit" style="width: 34rpx; height: 34rpx; color: #666;" />
-            </view>
-          </picker>
-          
-          <view v-else class="device-select-empty" style="margin-left: 16rpx;">
-            <text class="device-empty-text">暂无在线设备</text>
-          </view>
-
+        <view class="top-bar-right">
           <view class="ws-badge" :class="isConnected ? 'connected' : 'disconnected'">
             <view class="ws-dot"></view>
             <text class="ws-text">{{ isConnected ? '已连接' : '离线' }}</text>
           </view>
-          <view class="user-btn" @tap="showUserPanel = !showUserPanel">
+          <view class="user-btn" @tap.stop="showUserPanel = !showUserPanel">
             <view class="user-avatar">
               <text class="user-avatar-text">{{ userInitial }}</text>
             </view>
@@ -37,78 +30,110 @@
         </view>
       </view>
 
-      <!-- 用户面板 -->
-      <view v-if="showUserPanel" class="panel-mask" @tap="showUserPanel = false"></view>
-      <scroll-view v-if="showUserPanel" class="user-panel" scroll-y>
-        <view class="panel-user-head">
-          <view class="panel-avatar">
-            <text class="panel-avatar-text">{{ userInitial }}</text>
-          </view>
-          <view class="panel-user-info" v-if="currentUser">
-            <text class="panel-username">{{ currentUser.username }}</text>
-            <text class="panel-userid">ID: {{ currentUser.userId }}</text>
-          </view>
-        </view>
-        <view class="panel-section">
-          <text class="panel-section-title">TOKEN</text>
-          <view class="token-box">
-            <text class="token-text" selectable>{{ currentToken }}</text>
-          </view>
-          <view class="copy-btn" @tap="copyToken">
-            <text class="copy-btn-text">{{ tokenCopied ? '已复制!' : '复制' }}</text>
-          </view>
-        </view>
-        <view class="token-tip">
-          <text class="token-tip-text">将此 Token 填入插件 cj.config.json → cloud.token</text>
-        </view>
-        <view class="panel-section">
-          <view class="panel-section-header">
-            <text class="panel-section-title">在线设备</text>
-            <text class="panel-refresh" @tap="fetchClawStatus">{{ loadingStatus ? '刷新中' : '刷新' }}</text>
-          </view>
-          <view v-for="claw in clawList" :key="claw.clawId" class="claw-item">
-            <view class="claw-item-head">
-              <view class="claw-online-dot"></view>
-              <text class="claw-id">{{ claw.clawId }}</text>
+      <!-- 第二行：设备、会话、刷新、新对话（移动端单行可横向滚动） -->
+      <scroll-view class="tool-scroll" scroll-x show-scrollbar="false" enable-flex>
+        <view class="tool-row">
+          <picker
+            v-if="clawList.length > 0"
+            :value="selectedClawIndex"
+            :range="clawList"
+            range-key="clawId"
+            :class="['tool-picker-wrap', { active: activeDropdown === 'device' }]"
+            @tap="activeDropdown = 'device'"
+            @change="handleClawChange"
+          >
+            <view class="tool-chip tool-chip--device">
+              <text class="tool-chip-label">{{ clawList[selectedClawIndex]?.clawId || '选择设备' }}</text>
+              <image src="/static/down.png" mode="aspectFit" class="tool-caret" />
             </view>
-            <text class="claw-heartbeat">{{ formatHeartbeat(claw.lastHeartbeat) }}</text>
+          </picker>
+          <view v-else class="tool-chip tool-chip--device tool-chip--disabled">
+            <text class="tool-chip-label">暂无在线设备</text>
           </view>
-        </view>
-        <view class="logout-btn" @tap="onLogout">
-          <text class="logout-btn-text">退出登录</text>
+
+          <view class="tool-row-trail">
+            <picker
+              :value="selectedIndex"
+              :range="sessionOptions"
+              range-key="label"
+              :class="['tool-picker-wrap', { active: activeDropdown === 'session' }]"
+              @tap="activeDropdown = 'session'"
+              @change="handleSessionChange"
+            >
+              <view class="tool-chip tool-chip--session">
+                <text class="tool-chip-label">{{ sessionOptions[selectedIndex]?.label }}</text>
+                <image src="/static/down.png" mode="aspectFit" class="tool-caret" />
+              </view>
+            </picker>
+
+            <view class="tool-icon-btn" @tap.stop="refreshChat">
+              <image src="/static/refresh.png" mode="aspectFit" class="tool-icon-img" />
+            </view>
+            <view class="tool-icon-btn" @tap.stop="onNewSession">
+              <MessageSquarePlus :size="21" :stroke-width="1.75" :color="TOOL_ICON_COLOR" />
+            </view>
+          </view>
         </view>
       </scroll-view>
 
-      <!-- 聊天标题区 -->
-      <view class="chat-header">
-        <view class="chat-header-left">
-          <text class="chat-title">聊天</text>
-          <text class="chat-desc">用于快速干预的直接网关聊天会话。</text>
-        </view>
-        <view class="chat-header-right">
-          <picker v-model="selectedIndex" :range="sessionOptions" range-key="label"
-            :class="{ 'session-picker': true, 'active': activeDropdown === 'session' }"
-            @change="(e) => { selectedIndex = e.detail.value; console.log('🔄 Picker change：索引=', e.detail.value); }"
-            @click="activeDropdown = 'session'; $event.stopPropagation()">
-            <view class="picker-input">
-              <text class="picker-text">
-                {{ sessionOptions[selectedIndex].label }}
-              </text>
-              <image src="/static/down.png" mode="aspectFit" style="width: 34rpx; height: 34rpx; color: #999;" />
+      <!-- 用户面板 -->
+      <transition name="userPanelMask">
+        <view v-if="showUserPanel" class="panel-mask" @tap="showUserPanel = false"></view>
+      </transition>
+      <transition name="userPanelPop">
+        <scroll-view v-if="showUserPanel" class="user-panel" scroll-y>
+          <view class="panel-user-head">
+            <view class="panel-avatar">
+              <text class="panel-avatar-text">{{ userInitial }}</text>
             </view>
-          </picker>
-
-          <!-- 刷新按钮 -->
-        <view class="refresh-btn" @tap="refreshChat">
-            <image src="/static/refresh.png" mode="aspectFit" style="width: 50rpx; height: 50rpx;color:#f0f0f0" />
+            <view class="panel-user-info" v-if="currentUser">
+              <text class="panel-username">{{ currentUser.username }}</text>
+              <text class="panel-userid">ID: {{ currentUser.userId }}</text>
+            </view>
           </view>
-        </view>
-      </view>
-
+          <view class="panel-section">
+            <text class="panel-section-title">TOKEN</text>
+            <view class="token-box">
+              <text class="token-text" selectable>{{ currentToken }}</text>
+            </view>
+            <view class="copy-btn" @tap="copyToken">
+              <text class="copy-btn-text">{{ tokenCopied ? '已复制!' : '复制' }}</text>
+            </view>
+          </view>
+          <view class="token-tip">
+            <text class="token-tip-text">将此 Token 填入插件 cj.config.json → cloud.token</text>
+          </view>
+          <view class="panel-section">
+            <view class="panel-section-header">
+              <text class="panel-section-title">在线设备</text>
+              <text class="panel-refresh" @tap="fetchClawStatus">{{ loadingStatus ? '刷新中' : '刷新' }}</text>
+            </view>
+            <view v-for="claw in clawList" :key="claw.clawId" class="claw-item">
+              <view class="claw-item-head">
+                <view class="claw-online-dot"></view>
+                <text class="claw-id">{{ claw.clawId }}</text>
+              </view>
+              <text class="claw-heartbeat">{{ formatHeartbeat(claw.lastHeartbeat) }}</text>
+            </view>
+          </view>
+          <view class="logout-btn" @tap="onLogout">
+            <text class="logout-btn-text">退出登录</text>
+          </view>
+        </scroll-view>
+      </transition>
 
       <!-- 聊天区域 -->
-      <scroll-view class="chat-scroll" scroll-y :scroll-top="scrollTop" :scroll-with-animation="true"
-        show-scrollbar="false">
+      <scroll-view
+        class="chat-scroll"
+        scroll-y
+        :scroll-top="scrollTop"
+        :scroll-with-animation="true"
+        show-scrollbar="false"
+        refresher-enabled
+        :refresher-triggered="chatRefresherTriggered"
+        refresher-default-style="black"
+        @refresherrefresh="onChatRefresherRefresh"
+      >
         <!-- 欢迎界面 -->
         <view v-if="messages.length === 0" class="welcome-wrap">
           <view class="welcome-header">
@@ -119,26 +144,21 @@
             </view>
             <view class="welcome-text-container">
               <text class="welcome-title">你好，我是 AI 助手</text>
-              <text class="welcome-desc">基于 Ant Design X Vue 构建的智能对话界面，为您提供更好的 AI 交互体验~</text>
+              <text class="welcome-desc">网关直连对话，与 Web 端同一套风格，移动端已为你简化布局。</text>
             </view>
           </view>
           <view class="prompt-cards">
-            <!-- 只保留热门话题分组（渐变背景） -->
             <view class="prompt-group-wrap">
               <view class="prompt-group">
-                <text class="prompt-group-title">热门话题</text>
-                <!-- 热门话题问题（透明背景） -->
+                <text class="prompt-group-title">试试这样问</text>
                 <view class="prompt-question" @tap="onPromptTap('这个项目是做什么的？')">
-                  <text class="prompt-question-text">这个项目是做什么的？</text>
+                  <text class="prompt-question-text">项目是做什么的？</text>
                 </view>
                 <view class="prompt-question" @tap="onPromptTap('如何使用这个对话界面？')">
-                  <text class="prompt-question-text">如何使用这个对话界面？</text>
+                  <text class="prompt-question-text">怎么用这个聊天？</text>
                 </view>
                 <view class="prompt-question" @tap="onPromptTap('有哪些技术特点？')">
                   <text class="prompt-question-text">有哪些技术特点？</text>
-                </view>
-                <view class="prompt-question" @tap="onPromptTap('如何快速开始开发？')">
-                  <text class="prompt-question-text">如何快速开始开发？</text>
                 </view>
               </view>
             </view>
@@ -178,65 +198,93 @@
 
       <!-- 输入区域 -->
       <view class="input-area" :style="{ paddingBottom: safeBottom + 'px' }">
-        <!-- 快捷功能栏 -->
-        <view class="quick-bar">
-          <view v-for="item in quickItems" :key="item.key" class="quick-item" @tap="onQuickItemTap(item.key)"
-            hover-class="quick-item-active">
-            <text class="quick-item-text">{{ item.text }}</text>
-          </view>
-        </view>
-        <!-- 输入框容器 - 包含预览和输入框 -->
-        <view class="input-container" :class="{ 'has-attachments': attachments.length > 0, 'focused': inputFocused }">
-          <!-- 附件预览网格 - 在顶部 -->
-          <view v-if="attachments.length > 0" class="attachment-preview-container">
-            <view class="attachment-preview-list">
-              <!-- 所有附件 - 根据类型显示不同样式 -->
-              <view v-for="att in attachments" :key="att.uid">
-                <!-- 图片附件 -->
-                <view v-if="att.isImage" class="att-item">
-                  <image :src="att.base64" mode="aspectFill" class="att-thumb" @tap="previewImage(att.base64)" />
-                  <view class="att-remove" @tap="removeAttachment(att.uid)">
-                    <text class="att-remove-text">×</text>
-                  </view>
+        <!-- 附件预览（不再包进旧的 input-container 里，避免布局被 textarea 影响） -->
+        <view v-if="attachments.length > 0" class="attachment-preview-container">
+          <view class="attachment-preview-list">
+            <!-- 所有附件 - 根据类型显示不同样式 -->
+            <view v-for="att in attachments" :key="att.uid">
+              <!-- 图片附件 -->
+              <view v-if="att.isImage" class="att-item">
+                <image :src="att.base64" mode="aspectFill" class="att-thumb" @tap="previewImage(att.base64)" />
+                <view class="att-remove" @tap="removeAttachment(att.uid)">
+                  <text class="att-remove-text">×</text>
                 </view>
-                
-                <!-- 文档附件 -->
-                <view v-else class="att-item-doc">
-                  <view class="doc-icon-wrap">
-                    <text class="doc-icon">{{ getFileIcon(att.type) }}</text>
-                  </view>
-                  <view class="doc-info">
-                    <text class="doc-name">{{ att.name }}</text>
-                    <text class="doc-size">{{ att.size }}</text>
-                  </view>
-                  <view class="att-remove" @tap="removeAttachment(att.uid)">
-                    <text class="att-remove-text">×</text>
-                  </view>
+              </view>
+              <!-- 文档附件 -->
+              <view v-else class="att-item-doc">
+                <view class="doc-icon-wrap">
+                  <text class="doc-icon">{{ getFileIcon(att.type) }}</text>
+                </view>
+                <view class="doc-info">
+                  <text class="doc-name">{{ att.name }}</text>
+                  <text class="doc-size">{{ att.size }}</text>
+                </view>
+                <view class="att-remove" @tap="removeAttachment(att.uid)">
+                  <text class="att-remove-text">×</text>
                 </view>
               </view>
             </view>
           </view>
-          <!-- 输入框行 -->
-          <view class="input-row" :class="{ 'active': inputRowActive }">
-            <view class="input-action-btn" @tap="chooseImage">
-              <image src="/static/document.png" mode="aspectFit" style="width: 34rpx; height: 34rpx;" />
-            </view>
-            <textarea class="input-box" v-model="inputValue" placeholder="请输入消息内容..."
-              placeholder-class="input-placeholder" :disabled="loading" auto-height :max-height="120" confirm-type="send"
-              @confirm="onSend" @focus="onInputFocus" @blur="onInputBlur" />
-            <view class="input-send-btn" @tap="onSend">
-              <image src="/static/arrow-top.png" mode="aspectFit" style="width: 32rpx; height: 32rpx; color: #fff;" />
-            </view>
-          </view>
         </view>
-        <view class="input-buttons">
-          <view class="new-session-btn" @tap="onNewSession">
-            <text class="new-session-text">New session</text>
+
+        <!-- 底部输入面板（单行输入 + 右侧发送按钮 + 下方快捷标签） -->
+        <view class="chat-input-card" :class="{ 'chat-input-card--focused': inputFocused }">
+          <view class="chat-input-top-row">
+            <!-- 文本输入 -->
+            <view v-if="!voiceMode" class="chat-input-textarea-wrap">
+              <textarea
+                class="chat-input-textarea"
+                v-model="inputValue"
+                :maxlength="INPUT_MAX_LEN"
+                placeholder="请输入消息内容..."
+                placeholder-class="chat-input-placeholder"
+                :disabled="loading"
+                :max-height="72"
+                confirm-type="send"
+                @confirm="onSend"
+                @focus="onInputFocus"
+                @blur="onInputBlur"
+              />
+            </view>
+
+            <!-- 语音长按按钮（UI占位） -->
+            <view v-else class="chat-voice-btn" @tap="onVoiceTap" @longpress="onVoiceLongPress">
+              <text class="chat-voice-btn-text">长按说话</text>
+            </view>
           </view>
-          <view class="send-btn" :class="{ 'send-btn-active': inputValue.trim() || attachments.length > 0 }"
-            @tap="onSend">
-            <view v-if="loading" class="send-spinner"></view>
-            <text v-else class="send-icon">Send</text>
+
+          <view class="chat-input-action-row">
+            <view class="chat-input-icon-btn" @tap="chooseImage">
+              <Paperclip :size="18" :stroke-width="2" color="currentColor" />
+              <text class="chat-input-action-label">附件</text>
+            </view>
+
+            <!-- 语言按钮：开启后点击输入框切换语音长按按钮 -->
+            <view
+              class="chat-input-language-btn"
+              :class="{ 'chat-input-language-btn--active': voiceUiEnabled }"
+              @tap.stop="onLanguageToggle"
+            >
+              <Mic :size="18" :stroke-width="2" color="currentColor" />
+              <text class="chat-input-action-label">语音</text>
+            </view>
+
+            <view
+              class="chat-input-send-btn"
+              :class="{
+                'chat-input-send-btn--active': inputValue.trim() || attachments.length > 0,
+                'chat-input-send-btn--loading': loading,
+              }"
+              @tap="onSend"
+            >
+              <view v-if="loading" class="input-send-spinner"></view>
+              <image
+                v-else
+                src="/static/arrow-top.png"
+                mode="aspectFit"
+                class="chat-input-send-icon"
+              />
+            </view>
           </view>
         </view>
       </view>
@@ -246,6 +294,16 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, nextTick, onUnmounted  } from 'vue'
+import { MessageSquarePlus, Mic, Paperclip } from 'lucide-vue-next'
+import {
+  TOOL_ICON_COLOR,
+  mdHeading,
+  mdCode,
+  mdCodeBg,
+  mdPreBg,
+  mdBody,
+  mdH3Border,
+} from '../../styles/theme-colors.js'
 import { useUserStore, getUserToken, getUserData } from '../../store/user.js'
 import { getClawStatus } from '../../api/claw.js'
 import {
@@ -260,22 +318,45 @@ const showUserPanel = ref(false)
 const tokenCopied = ref(false)
 const clawList = ref([])
 const loadingStatus = ref(false)
+let clawStatusInflight = 0
 const selectedClawIndex = ref(0)
 const deviceSearchQuery = ref('')
 const filteredClawList = ref([])
+/** 单条消息正文最大字符数（与输入框 maxlength 一致） */
+const INPUT_MAX_LEN = 500
 const inputValue = ref('')
 const attachments = ref([])
 const scrollTop = ref(0)
+const chatRefresherTriggered = ref(false)
 const safeBottom = ref(0)
 const inputFocused = ref(false)
 const inputRowActive = ref(false);
 const sessionOptions = ref([
-  { value: 'main', label: 'Main Session' },
-  { value: 'session2', label: 'Session 2' },
+  { value: 'main', label: '主会话' },
+  { value: 'session2', label: '会话 2' },
 ])
 const selectedIndex = ref(0)
 const currentSession = ref(sessionOptions.value[selectedIndex.value].value)
 const activeDropdown = ref(null)
+
+// 语音输入UI（暂不接入真实录音逻辑）
+const voiceUiEnabled = ref(false) // 语言按钮高亮开关
+const voiceMode = ref(false) // 当前是否显示语音长按按钮
+
+const onLanguageToggle = () => {
+  voiceUiEnabled.value = !voiceUiEnabled.value
+  // 语言按钮切换时直接切换到语音/文本，不依赖再点文本框
+  voiceMode.value = voiceUiEnabled.value
+}
+
+const onVoiceTap = () => {
+  voiceMode.value = false
+  voiceUiEnabled.value = false
+}
+
+const onVoiceLongPress = () => {
+  uni.showToast({ title: '语音输入暂未实现', icon: 'none', duration: 1200 })
+}
 
 // 解包 computed ref，确保模板中能正确访问
 const currentUser  = computed(() => getUserData())
@@ -295,9 +376,8 @@ const quickPrompts = [
 ]
 const quickItems = [
   { key: '1', text: '项目介绍' },
-  { key: '2', text: '功能演示' },
-  { key: '3', text: '使用指南' },
-  { key: '4', text: '技术支持' },
+  { key: '2', text: '使用指南' },
+  { key: '3', text: '技术支持' },
 ]
 watch(
   selectedIndex,
@@ -314,23 +394,24 @@ watch(
   },
   { immediate: true, deep: false }
 )
-// 点击外部关闭下拉框激活状态
 const handleClickOutside = (event) => {
-  const pickers = document.querySelectorAll('.device-select-bar, .session-picker')
+  if (typeof document === 'undefined' || !document.querySelectorAll) return
+  const pickers = document.querySelectorAll('.tool-picker-wrap')
   let clickedInside = false
-
-  pickers.forEach(picker => {
-    if (picker.contains(event.target)) {
-      clickedInside = true
-    }
+  pickers.forEach((picker) => {
+    if (picker.contains(event.target)) clickedInside = true
   })
-
-  if (!clickedInside) {
-    activeDropdown.value = null
-  }
+  if (!clickedInside) activeDropdown.value = null
 }
-const refreshChat = async () => {
-  if (!currentClawId.value) return
+/** @param refreshDevicesWhenNoClaw 为 true 时：无选中设备则拉取在线设备列表；为 false 时无设备则静默 return（仅保留给特殊调用） */
+const performChatRefresh = async (refreshDevicesWhenNoClaw) => {
+  if (!currentClawId.value) {
+    if (refreshDevicesWhenNoClaw) {
+      await fetchClawStatus()
+      uni.showToast({ title: '设备列表已更新', icon: 'none', duration: 1000 })
+    }
+    return
+  }
   if (currentSession.value === 'main') {
     await loadHistory(currentClawId.value)
   } else {
@@ -338,9 +419,48 @@ const refreshChat = async () => {
   }
   uni.showToast({ title: '已刷新', icon: 'none', duration: 800 })
 }
+
+/** 部分端同步设 false 无法结束下拉动画，需在 nextTick / 短延迟后再关 */
+const stopChatPullRefresher = () => {
+  chatRefresherTriggered.value = false
+  nextTick(() => {
+    chatRefresherTriggered.value = false
+    setTimeout(() => {
+      chatRefresherTriggered.value = false
+    }, 80)
+  })
+}
+
+const onChatRefresherRefresh = async () => {
+  // 受控 refresher-triggered：必须先置 true 与端上状态对齐，结束后再置 false 才会收起
+  chatRefresherTriggered.value = true
+  try {
+    await performChatRefresh(true)
+  } catch (e) {
+    console.error('[Chat] 下拉刷新失败', e)
+    uni.showToast({ title: '刷新失败', icon: 'none', duration: 1200 })
+  } finally {
+    stopChatPullRefresher()
+  }
+}
+
+const refreshChat = async () => {
+  uni.showLoading({ title: '刷新中', mask: true })
+  try {
+    // 与下拉刷新一致：无设备时也会拉在线设备并提示，避免点击无任何反馈
+    await performChatRefresh(true)
+  } catch (e) {
+    console.error('[Chat] 刷新失败', e)
+    uni.showToast({ title: '刷新失败', icon: 'none', duration: 1200 })
+  } finally {
+    uni.hideLoading()
+  }
+}
 onMounted(async () => {
   const sys = uni.getSystemInfoSync()
-  document.addEventListener('click', handleClickOutside)
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('click', handleClickOutside)
+  }
   safeBottom.value = sys.safeAreaInsets?.bottom || 0
   // 确保登录后连接，把 userId 直接传入以兼容"不记住登录"的情况
   if (currentToken.value) {
@@ -354,15 +474,20 @@ onMounted(async () => {
   }
 })
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
+  if (typeof document !== 'undefined' && document.removeEventListener) {
+    document.removeEventListener('click', handleClickOutside)
+  }
 })
 // 设备选择处理函数
 const handleClawChange = (e) => {
-  selectedClawIndex.value = e.detail.value
-  const clawId = clawList.value[e.detail.value]?.clawId
-  if (clawId) {
-    onClawChange(clawId)
-  }
+  const idx = Number(e.detail.value)
+  selectedClawIndex.value = idx
+  const clawId = clawList.value[idx]?.clawId
+  if (clawId) onClawChange(clawId)
+}
+
+const handleSessionChange = (e) => {
+  selectedIndex.value = Number(e.detail.value)
 }
 
 watch(messages, () => {
@@ -372,6 +497,7 @@ watch(messages, () => {
 const fetchClawStatus = async () => {
   const userId = currentUser.value?.userId
   if (!userId || !currentToken.value) return
+  clawStatusInflight++
   loadingStatus.value = true
   try {
     const data = await getClawStatus(userId, currentToken.value)
@@ -380,7 +506,10 @@ const fetchClawStatus = async () => {
   } catch (e) {
     console.error('[Chat] 获取设备失败：', e)
   } finally {
-    loadingStatus.value = false
+    clawStatusInflight = Math.max(0, clawStatusInflight - 1)
+    if (clawStatusInflight === 0) {
+      loadingStatus.value = false
+    }
   }
 }
 
@@ -421,22 +550,12 @@ const copyToken = () => {
 const onLogout = () => {
   disconnect()
   userStore.logout()
-  uni.reLaunch({ url: '/pages/login/login' })
+  uni.navigateTo({ url: '/pages/login/login', animationType: 'slide-in-right', animationDuration: 200 })
 }
 
 const onNewSession = async () => {
-  // 添加脉冲效果类名
-  const newSessionBtn = document.querySelector('.new-session-btn')
-  if (newSessionBtn) {
-    newSessionBtn.classList.add('pulse-active')
-    // 动画完成后移除类名
-    setTimeout(() => {
-      newSessionBtn.classList.remove('pulse-active')
-    }, 600)
-  }
-  
   await clearHistory(currentToken.value)
-  uni.showToast({ title: '已清空', icon: 'none', duration: 1200 })
+  uni.showToast({ title: '已清空对话', icon: 'none', duration: 1200 })
 }
 
 // ============ 文件类型识别和处理函数 ============
@@ -695,7 +814,8 @@ const previewImage = (src) => {
 }
 
 const onSend = async () => {
-  const text = inputValue.value.trim()
+  let text = inputValue.value.trim()
+  if (text.length > INPUT_MAX_LEN) text = text.slice(0, INPUT_MAX_LEN)
   if (!text && attachments.value.length === 0) return
   if (loading.value) {
     uni.showToast({ title: '请等待回复', icon: 'none' })
@@ -708,63 +828,50 @@ const onSend = async () => {
 }
 
 const onPromptTap = (text) => {
-  inputValue.value = text
+  inputValue.value = String(text).slice(0, INPUT_MAX_LEN)
   onSend()
 }
 
 const onQuickItemTap = (key) => {
-  // 处理快捷功能点击
-  switch (key) {
-    case '1':
-      inputValue.value = '项目介绍'
-      break
-    case '2':
-      inputValue.value = '功能演示'
-      break
-    case '3':
-      inputValue.value = '使用指南'
-      break
-    case '4':
-      inputValue.value = '技术支持'
-      break
-  }
+  const map = { '1': '项目介绍', '2': '使用指南', '3': '技术支持' }
+  inputValue.value = String(map[key] || '').slice(0, INPUT_MAX_LEN)
   onSend()
 }
 
 const onInputFocus = () => {
   inputFocused.value = true
   inputRowActive.value = true
-  console.log('inputRowActive:', inputRowActive.value); // 应输出true
 }
 
 const onInputBlur = () => {
   inputFocused.value = false
   inputRowActive.value = false
-  console.log('inputRowActive:', inputRowActive.value); // 应输出true
 }
 
 const renderMarkdown = (content) => {
   if (!content) return ''
   return content
-    .replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre style="background:#f5f5f5;padding:16rpx;border-radius:8rpx;margin:8rpx 0;overflow:auto"><code style="font-size:22rpx;font-family:monospace;color:#333">$1</code></pre>')
-    .replace(/`([^`]+)`/g, '<text style="background:#f0f0f0;padding:2rpx 6rpx;border-radius:4rpx;font-size:0.9em;color:#d56161">$1</text>')
+    .replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => `<pre style="background:${mdPreBg};padding:16rpx;border-radius:8rpx;margin:8rpx 0;overflow:auto"><code style="font-size:22rpx;font-family:monospace;color:${mdBody}">${code}</code></pre>`)
+    .replace(/`([^`]+)`/g, (_, t) => `<text style="background:${mdCodeBg};padding:2rpx 6rpx;border-radius:4rpx;font-size:0.9em;color:${mdCode}">${t}</text>`)
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/^### (.+)$/gm, '<text style="font-weight:600;color:#333;padding-left:8rpx;border-left:3px solid #ccc;display:block;margin:8rpx 0">$1</text>')
-    .replace(/^## (.+)$/gm, '<text style="font-weight:600;font-size:1.1em;color:#1a1a1a;display:block;margin:10rpx 0">$1</text>')
-    .replace(/^# (.+)$/gm, '<text style="font-weight:700;font-size:1.2em;color:#1a1a1a;display:block;margin:12rpx 0">$1</text>')
+    .replace(/^### (.+)$/gm, (_, t) => `<text style="font-weight:600;color:${mdBody};padding-left:8rpx;border-left:3px solid ${mdH3Border};display:block;margin:8rpx 0">${t}</text>`)
+    .replace(/^## (.+)$/gm, (_, t) => `<text style="font-weight:600;font-size:1.1em;color:${mdHeading};display:block;margin:10rpx 0">${t}</text>`)
+    .replace(/^# (.+)$/gm, (_, t) => `<text style="font-weight:700;font-size:1.2em;color:${mdHeading};display:block;margin:12rpx 0">${t}</text>`)
     .replace(/^[*\-] (.+)$/gm, '<text style="padding-left:20rpx;display:block;margin:4rpx 0">• $1</text>')
     .replace(/\n/g, '<br/>')
 }
 </script>
 
-<style scoped>
+<style lang="less" scoped>
+@import '../../styles/theme.less';
+
 .chat-page {
   width: 100vw;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: @ohsd-app-page-bg;
   overflow: hidden;
 }
 
@@ -778,47 +885,164 @@ const renderMarkdown = (content) => {
   overflow: hidden;
 }
 
-/* 顶部导航栏 */
-.header {
+/* 顶栏 */
+.top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24rpx;
-  margin-top: 8rpx;
-  height: 88rpx;
-  background: #ffffff;
+  padding: 12rpx 28rpx 16rpx;
+  padding-top: calc(12rpx + var(--status-bar-height, 0px));
+  background: @ohsd-bg-surface;
   flex-shrink: 0;
-  padding-top: var(--status-bar-height, 0px);
+  border-bottom: 1rpx solid @ohsd-border-hairline;
 }
 
-.header-left {
+.top-bar-left {
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 16rpx;
+  min-width: 0;
 }
 
-.header-logo {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 12rpx;
-  background: #f2f2f7;
+.top-logo {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 14rpx;
+  background: @ohsd-bg-ios;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
-.header-title {
-  font-size: 30rpx;
+.top-logo-img {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.top-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.top-brand-name {
+  font-size: 28rpx;
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.85);
+  color: @ohsd-text-primary;
+  line-height: 1.2;
 }
 
-.header-right {
+.top-brand-sub {
+  font-size: 22rpx;
+  color: @ohsd-text-subtle;
+  line-height: 1.2;
+}
+
+.top-bar-right {
   display: flex;
   align-items: center;
-  gap: 10rpx;
+  gap: 12rpx;
   flex-shrink: 0;
+}
+
+/* 工具行（横向滚动） */
+.tool-scroll {
+  width: 100%;
+  flex-shrink: 0;
+  white-space: nowrap;
+  border-bottom: 1rpx solid @ohsd-border-hairline;
+  background: @ohsd-bg-page;
+}
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 12rpx 24rpx 14rpx;
+  box-sizing: border-box;
+  min-width: 100%;
+}
+
+/* 会话 + 刷新/新对话图标靠右，左侧保留设备选择 */
+.tool-row-trail {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.tool-picker-wrap {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.tool-picker-wrap.active .tool-chip {
+  border-color: @ohsd-primary;
+  box-shadow: 0 0 0 2rpx @ohsd-primary-muted;
+}
+
+.tool-chip {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  height: 64rpx;
+  padding: 0 20rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid @ohsd-border-light;
+  background: @ohsd-white;
+  box-sizing: border-box;
+}
+
+.tool-chip--device {
+  min-width: 200rpx;
+  max-width: 320rpx;
+}
+
+.tool-chip--session {
+  min-width: 160rpx;
+}
+
+.tool-chip--disabled {
+  background: @ohsd-fill-03;
+  border-style: dashed;
+}
+
+.tool-chip-label {
+  font-size: 24rpx;
+  color: @ohsd-text-75;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-caret {
+  width: 26rpx;
+  height: 26rpx;
+  flex-shrink: 0;
+  opacity: 0.55;
+}
+
+.tool-icon-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 12rpx;
+  background: @ohsd-white;
+  border: 1rpx solid @ohsd-border-light;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tool-icon-img {
+  width: 36rpx;
+  height: 36rpx;
+  opacity: 0.65;
 }
 
 .ws-badge {
@@ -827,26 +1051,26 @@ const renderMarkdown = (content) => {
   gap: 6rpx;
   padding: 6rpx 12rpx;
   border-radius: 20rpx;
-  background: rgba(0, 0, 0, 0.04);
+  background: @ohsd-fill-04;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .ws-badge.connected {
-  background: rgba(82, 196, 26, 0.1);
+  background: @ohsd-success-muted;
 }
 
 .ws-badge.disconnected {
-  background: rgba(255, 77, 79, 0.08);
+  background: @ohsd-danger-muted;
 }
 
 .ws-badge.connected .ws-dot {
-  background: #52c41a;
-  box-shadow: 0 0 0 3rpx rgba(82, 196, 26, 0.25);
+  background: @ohsd-success;
+  box-shadow: 0 0 0 3rpx @ohsd-success-ring;
 }
 
 .ws-badge.disconnected .ws-dot {
-  background: #ff4d4f;
+  background: @ohsd-color-error;
 }
 
 .ws-dot {
@@ -858,7 +1082,7 @@ const renderMarkdown = (content) => {
 
 .ws-text {
   font-size: 20rpx;
-  color: rgba(0, 0, 0, 0.6);
+  color: @ohsd-text-60;
   white-space: nowrap;
 }
 
@@ -870,7 +1094,7 @@ const renderMarkdown = (content) => {
   width: 40rpx;
   height: 40rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ff4d4f, #d9363e);
+  background: linear-gradient(135deg, @ohsd-color-error, @ohsd-danger-deep);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -879,91 +1103,7 @@ const renderMarkdown = (content) => {
 .user-avatar-text {
   font-size: 20rpx;
   font-weight: 700;
-  color: #fff;
-}
-
-/* 聊天标题区 */
-.chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  /* 垂直居中 */
-  padding: 20rpx 24rpx 0;
-  margin-bottom: 24rpx;
-}
-
-/* 左侧标题区域 */
-.chat-header-left {
-  display: flex;
-  flex-direction: column;
-}
-
-/* 聊天标题 */
-.chat-title {
-  font-size: 32rpx;
-  font-weight: 600;
-  margin-bottom: 4rpx;
-}
-
-/* 聊天描述 */
-.chat-desc {
-  font-size: 20rpx;
-  color: #999;
-}
-
-/* 右侧操作区域 */
-.chat-header-right {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  justify-content: center;
-  /* 水平居中 */
-  padding-left: 16rpx;
-  /* 增加左侧内边距，让居中更明显 */
-  /* width: auto; */
-  /* 自适应宽度，避免占满右侧 */
-}
-
-/* 会话选择器容器 */
-.session-picker {
-  width: 180rpx;
-  border: 2rpx solid #e5e7eb;
-  border-radius: 10rpx;
-  padding: 6rpx 10rpx;
-  display: flex;
-  align-items: center;
-  margin: 0;
-}
-
-.session-picker.active {
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2rpx rgba(22, 119, 255, 0.1);
-}
-
-/* 选择器输入框 */
-.picker-input {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4rpx;
-}
-
-/* 选择器文字 */
-.picker-text {
-  font-size: 18rpx;
-  line-height: 1.4;
-  color: #333;
-}
-
-/* 刷新按钮 */
-.refresh-btn {
-  width: 24rpx;
-  height: 24rpx;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+  color: @ohsd-white;
 }
 
 /* 用户面板 */
@@ -971,34 +1111,92 @@ const renderMarkdown = (content) => {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(0, 0, 0, 0.15);
+  background: @ohsd-overlay-light;
 }
 
 .user-panel {
   position: fixed;
-  top: calc(88rpx + var(--status-bar-height, 0px));
-  right: 16rpx;
-  width: 480rpx;
-  max-height: 70vh;
-  background: #fff;
+  top: calc(152rpx + var(--status-bar-height, 0px));
+  left: 24rpx;
+  right: 24rpx;
+  width: auto;
+  max-height: 72vh;
+  background: @ohsd-white;
   border-radius: 20rpx;
-  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8rpx 32rpx @ohsd-border-default;
   z-index: 101;
+  animation: none;
+}
+
+@keyframes panelPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(14rpx) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes panelPopOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(10rpx) scale(0.98);
+  }
+}
+
+.userPanelPop-enter-active {
+  animation: panelPopIn 0.18s ease-out both;
+}
+
+.userPanelPop-leave-active {
+  animation: panelPopOut 0.14s ease-in both;
+}
+
+@keyframes maskFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes maskFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.userPanelMask-enter-active {
+  animation: maskFadeIn 0.14s ease-out both;
+}
+
+.userPanelMask-leave-active {
+  animation: maskFadeOut 0.12s ease-in both;
 }
 
 .panel-user-head {
   display: flex;
   align-items: center;
   gap: 16rpx;
-  padding: 24rpx 24rpx 20rpx;
-  border-bottom: 1rpx solid #f0f0f0;
+  padding: 28rpx 24rpx 24rpx;
+  border-bottom: 1rpx solid @ohsd-chat-divider;
 }
 
 .panel-avatar {
   width: 56rpx;
   height: 56rpx;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ff4d4f, #d9363e);
+  background: linear-gradient(135deg, @ohsd-color-error, @ohsd-danger-deep);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1007,75 +1205,92 @@ const renderMarkdown = (content) => {
 .panel-avatar-text {
   font-size: 24rpx;
   font-weight: 700;
-  color: #fff;
+  color: @ohsd-white;
 }
 
 .panel-user-info {
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
+  gap: 6rpx;
 }
 
 .panel-username {
   font-size: 26rpx;
   font-weight: 600;
-  color: #1a1a1a;
+  color: @ohsd-markdown-heading;
 }
 
 .panel-userid {
   font-size: 20rpx;
-  color: #999;
+  color: @ohsd-text-caption-hex;
 }
 
 .panel-section {
-  padding: 20rpx 24rpx 0;
+  padding: 26rpx 24rpx 0;
 }
 
 .panel-section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12rpx;
+  margin-bottom: 16rpx;
 }
 
 .panel-section-title {
   font-size: 18rpx;
   font-weight: 600;
-  color: #999;
+  color: @ohsd-text-caption-hex;
   letter-spacing: 1rpx;
   display: block;
-  margin-bottom: 12rpx;
+  margin-bottom: 16rpx;
 }
 
 .panel-refresh {
   font-size: 20rpx;
-  color: #1677ff;
-  margin-bottom: 12rpx;
+  color: @ohsd-primary;
+  margin-bottom: 16rpx;
 }
 
-/* 输入框右侧蓝色圆形按钮 */
 .input-send-btn {
-  width: 50rpx;
-  /* 增大尺寸 */
-  height: 50rpx;
-  /* 增大尺寸 */
-  border-radius: 50%;
-  background-color: #1677ff;
-  /* 蓝色 */
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 18rpx;
+  background-color: @ohsd-primary-soft;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 12rpx;
+  margin-left: 8rpx;
   flex-shrink: 0;
-  padding: 6rpx;
-  /* 增加内边距 */
+}
+
+.input-send-btn--active {
+  background-color: @ohsd-primary;
+}
+
+.input-send-btn--loading {
+  background-color: @ohsd-primary;
+  opacity: 0.85;
+}
+
+.input-send-spinner {
+  width: 32rpx;
+  height: 32rpx;
+  border: 3rpx solid @ohsd-on-primary-ring;
+  border-top-color: @ohsd-white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.input-send-icon {
+  width: 34rpx;
+  height: 34rpx;
 }
 
 .token-box {
-  background: #f6f6f6;
+  background: @ohsd-bg-muted;
   border-radius: 12rpx;
   padding: 12rpx 16rpx;
-  margin-bottom: 12rpx;
+  margin-bottom: 16rpx;
   max-height: 100rpx;
   overflow: hidden;
 }
@@ -1083,35 +1298,35 @@ const renderMarkdown = (content) => {
 .token-text {
   font-size: 18rpx;
   font-family: monospace;
-  color: #333;
+  color: @ohsd-text-body-hex;
   word-break: break-all;
   line-height: 1.5;
 }
 
 .token-tip {
-  background: #f0f7ff;
+  background: @ohsd-surface-tint-blue;
   border-radius: 12rpx;
   padding: 12rpx 16rpx;
-  margin-bottom: 12rpx;
+  margin-bottom: 16rpx;
 }
 
 .token-tip-text {
   font-size: 18rpx;
-  color: #1677ff;
+  color: @ohsd-primary;
   line-height: 1.5;
 }
 
 .copy-btn {
-  background: rgba(0, 0, 0, 0.05);
+  background: @ohsd-fill-05;
   border-radius: 10rpx;
   padding: 12rpx;
   text-align: center;
-  margin-bottom: 20rpx;
+  margin-bottom: 24rpx;
 }
 
 .copy-btn-text {
   font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.6);
+  color: @ohsd-text-60;
 }
 
 /* 设备选择下拉框 */
@@ -1124,21 +1339,21 @@ const renderMarkdown = (content) => {
   width: 100%;
   height: 64rpx;
   padding: 0 20rpx;
-  background: #fafafa;
+  background: @ohsd-bg-page;
   border-radius: 12rpx;
   font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.85);
+  color: @ohsd-text-near-primary;
   margin-bottom: 16rpx;
 }
 
 .device-search-placeholder {
-  color: rgba(0, 0, 0, 0.3);
+  color: @ohsd-text-ghost;
   font-size: 22rpx;
 }
 
 .device-select {
   padding: 16rpx;
-  background: #fafafa;
+  background: @ohsd-bg-page;
   border-radius: 12rpx;
   text-align: center;
 }
@@ -1147,12 +1362,12 @@ const renderMarkdown = (content) => {
 .device-select-placeholder {
   font-size: 22rpx;
   line-height: 1.4;
-  color: rgba(0, 0, 0, 0.6);
+  color: @ohsd-text-60;
 }
 
 .claw-empty {
   padding: 16rpx;
-  background: #fafafa;
+  background: @ohsd-bg-page;
   border-radius: 12rpx;
   text-align: center;
   margin-bottom: 16rpx;
@@ -1160,13 +1375,13 @@ const renderMarkdown = (content) => {
 
 .claw-empty-text {
   font-size: 22rpx;
-  color: #bbb;
+  color: @ohsd-text-dim-hex;
 }
 
 .claw-item {
   padding: 14rpx 18rpx;
-  background: #f8fffe;
-  border: 1rpx solid #d9f7be;
+  background: @ohsd-claw-card-bg;
+  border: 1rpx solid @ohsd-claw-card-border;
   border-radius: 12rpx;
   margin-bottom: 10rpx;
 }
@@ -1182,31 +1397,31 @@ const renderMarkdown = (content) => {
   width: 10rpx;
   height: 10rpx;
   border-radius: 50%;
-  background: #52c41a;
+  background: @ohsd-success;
 }
 
 .claw-id {
   font-size: 22rpx;
   font-weight: 600;
-  color: #1a1a1a;
+  color: @ohsd-markdown-heading;
 }
 
 .claw-heartbeat {
   font-size: 18rpx;
-  color: #aaa;
+  color: @ohsd-text-hint-hex;
 }
 
 .logout-btn {
   margin: 20rpx 24rpx 24rpx;
   padding: 18rpx;
-  background: rgba(255, 77, 79, 0.06);
+  background: @ohsd-danger-faint;
   border-radius: 12rpx;
   text-align: center;
 }
 
 .logout-btn-text {
   font-size: 24rpx;
-  color: #ff4d4f;
+  color: @ohsd-color-error;
   font-weight: 500;
 }
 
@@ -1215,8 +1430,8 @@ const renderMarkdown = (content) => {
   display: flex;
   align-items: center;
   padding: 10rpx 20rpx;
-  background: #fafafa;
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.04);
+  background: @ohsd-bg-page;
+  border-bottom: 1rpx solid @ohsd-border-subtle-04;
   flex-shrink: 0;
   gap: 12rpx;
 }
@@ -1232,15 +1447,15 @@ const renderMarkdown = (content) => {
 .device-search-input {
   height: 64rpx;
   padding: 0 20rpx;
-  background: rgba(0, 0, 0, 0.04);
+  background: @ohsd-fill-04;
   border-radius: 100rpx;
   font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.85);
+  color: @ohsd-text-near-primary;
   flex: 1;
 }
 
 .device-search-placeholder {
-  color: rgba(0, 0, 0, 0.3);
+  color: @ohsd-text-ghost;
   font-size: 22rpx;
 }
 
@@ -1252,8 +1467,8 @@ const renderMarkdown = (content) => {
 }
 
 .device-select-bar.active {
-  border: 2rpx solid #1677ff;
-  box-shadow: 0 0 0 2rpx rgba(22, 119, 255, 0.1);
+  border: 2rpx solid @ohsd-primary;
+  box-shadow: 0 0 0 2rpx @ohsd-primary-ring;
 }
 
 .device-select-input {
@@ -1262,13 +1477,13 @@ const renderMarkdown = (content) => {
   align-items: center;
   padding: 6rpx 12rpx;
   border-radius: 10rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.1);
+  border: 1rpx solid @ohsd-border-light;
   max-width: 220rpx;
 }
 
 .device-select-placeholder {
   font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.65);
+  color: @ohsd-text-65;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1277,7 +1492,7 @@ const renderMarkdown = (content) => {
 
 .device-select-placeholder {
   font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.6);
+  color: @ohsd-text-60;
 }
 
 /* 设备选择框空状态 */
@@ -1286,38 +1501,38 @@ const renderMarkdown = (content) => {
   align-items: center;
   padding: 8rpx 16rpx;
   border-radius: 10rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.1);
-  background: rgba(0, 0, 0, 0.02);
+  border: 1rpx solid @ohsd-border-light;
+  background: @ohsd-fill-02;
 }
 
 .device-empty-text {
   font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.45);
+  color: @ohsd-text-tertiary;
 }
 
 /* 快捷功能栏 */
 .quick-bar {
   display: flex;
   align-items: center;
-  padding-bottom: 8rpx;
+  padding-bottom: 6rpx;
   flex-shrink: 0;
-  gap: 10rpx;
+  gap: 12rpx;
   overflow-x: auto;
 }
 
 .quick-item {
-  padding: 8rpx 18rpx;
-  background-color: transparent;
-  border: 1rpx solid rgba(0, 0, 0, 0.12);
-  border-radius: 20rpx;
+  padding: 10rpx 22rpx;
+  background-color: @ohsd-bg-page;
+  border: 1rpx solid @ohsd-border-subtle-08;
+  border-radius: 999rpx;
   flex-shrink: 0;
   transition: background-color 0.15s ease;
 }
 
 .quick-item-active {
-  background-color: #d5d5d5;
+  background-color: @ohsd-chat-thumb;
   /* 深灰（比原始浅灰深一级） */
-  box-shadow: inset 0 2rpx 4rpx rgba(0, 0, 0, 0.1);
+  box-shadow: inset 0 2rpx 4rpx @ohsd-border-light;
   /* 内阴影反馈 */
   transition: background-color 0.2s ease;
   /* 平滑过渡 */
@@ -1325,8 +1540,8 @@ const renderMarkdown = (content) => {
 
 .quick-item-text {
   font-size: 24rpx;
-  color: rgba(0, 0, 0, 0.6);
-  line-height: 2.0;
+  color: @ohsd-text-secondary;
+  line-height: 1.4;
   white-space: nowrap;
 }
 
@@ -1336,38 +1551,37 @@ const renderMarkdown = (content) => {
   min-height: 0;
 }
 
-/* 欢迎界面 */
 .welcome-wrap {
-  padding: 48rpx 32rpx 32rpx;
+  padding: 32rpx 28rpx 24rpx;
 }
 
 .welcome-header {
   display: flex;
-  align-items: center;
-  margin-bottom: 42rpx;
+  align-items: flex-start;
+  margin-bottom: 28rpx;
   max-width: 100%;
-  /* 防止溢出 */
 }
 
 .welcome-icon-wrap {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 24rpx;
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 20rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 24rpx;
+  margin-right: 20rpx;
+  flex-shrink: 0;
 }
 
 .welcome-icon {
-  width: 100rpx;
-  height: 100rpx;
+  width: 80rpx;
+  height: 80rpx;
 }
 
 .welcome-title {
-  font-size: 34rpx;
+  font-size: 32rpx;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.85);
+  color: @ohsd-text-primary;
   margin-bottom: 8rpx;
 }
 
@@ -1376,18 +1590,13 @@ const renderMarkdown = (content) => {
   flex-direction: column;
   justify-content: center;
   flex: 1;
-  /* 占据剩余空间 */
   min-width: 0;
-  /* 防止溢出 */
-  margin-left: 16rpx;
-  /* 增加与图标间距 */
 }
 
 .welcome-desc {
   font-size: 24rpx;
-  color: rgba(0, 0, 0, 0.6);
-  margin-top: 4rpx;
-  /* 增加与标题间距 */
+  color: @ohsd-text-tertiary;
+  line-height: 1.5;
 }
 
 /* 提示卡片容器 */
@@ -1402,46 +1611,39 @@ const renderMarkdown = (content) => {
 
 /* 分组背景容器（渐变） */
 .prompt-group-wrap {
-  background: linear-gradient(123deg, #e5f4ff 0%, #efe7ff 100%);
-  /* 保持渐变背景 */
+  background: linear-gradient(123deg, @ohsd-welcome-grad-start 0%, @ohsd-welcome-grad-end 100%);
   border-radius: 16rpx;
-  /* 保持圆角 */
-  padding: 30rpx;
-  /* 调整内边距 */
+  padding: 24rpx 26rpx;
   width: 100%;
-  /* 占满宽度 */
 }
 
 /* 分组容器 */
 .prompt-group {
   display: flex;
   flex-direction: column;
-  gap: 16rpx;
-  /* 卡片间距 */
+  gap: 12rpx;
 }
 
 /* 分组标题 */
 .prompt-group-title {
-  font-size: 28rpx;
-  font-weight: bold;
-  color: #333;
-  margin-bottom: 12rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: @ohsd-text-65;
+  margin-bottom: 8rpx;
 }
 
 /* 热门话题问题（透明背景） */
 .prompt-question {
-  font-size: 24rpx;
-  color: #666;
-  cursor: pointer;
-  transition: color 0.2s;
-  line-height: 1.6;
+  font-size: 26rpx;
+  color: @ohsd-text-secondary;
+  line-height: 1.55;
   background-color: transparent;
-  /* 透明背景 */
+  padding: 8rpx 0;
+  border-bottom: 1rpx solid @ohsd-border-hairline;
 }
 
-/* 热门话题问题 hover 效果 */
-.prompt-question:hover {
-  color: #1677ff;
+.prompt-question:last-child {
+  border-bottom-width: 0;
 }
 
 /* 设计指南卡片（半透明白色背景） */
@@ -1450,7 +1652,7 @@ const renderMarkdown = (content) => {
   /* 启用Flex布局 */
   flex-direction: column;
   /* 垂直排列子元素 */
-  background-color: #ffffffa6;
+  background-color: @ohsd-glass-surface;
   /* 半透明白色 */
   border-radius: 12rpx;
   /* 圆角 */
@@ -1466,7 +1668,7 @@ const renderMarkdown = (content) => {
 .prompt-card-title {
   font-size: 24rpx;
   font-weight: 500;
-  color: #333;
+  color: @ohsd-text-body-hex;
   margin-bottom: 8rpx;
   /* 标题与描述间距 */
 }
@@ -1474,23 +1676,23 @@ const renderMarkdown = (content) => {
 /* 设计指南卡片描述 */
 .prompt-card-desc {
   font-size: 22rpx;
-  color: #666;
+  color: @ohsd-markdown-blockquote-text;
   line-height: 1.5;
 }
 
 /* 设计指南卡片 hover 效果 */
 .prompt-card:hover {
-  background-color: #ffffffcc;
+  background-color: @ohsd-glass-surface-hover;
   /*  hover时更不透明 */
 }
 
 /* 设计指南卡片（白色背景圆角） */
 .prompt-card {
-  background-color: #fff;
+  background-color: @ohsd-white;
   /* 白色背景 */
   border-radius: 12rpx;
   /* 圆角 */
-  border: 1rpx solid #eee;
+  border: 1rpx solid @ohsd-chat-border-soft;
   /* 浅边框 */
   padding: 16rpx;
   cursor: pointer;
@@ -1501,20 +1703,20 @@ const renderMarkdown = (content) => {
 .prompt-card-title {
   font-size: 24rpx;
   font-weight: 500;
-  color: #333;
+  color: @ohsd-text-body-hex;
   margin-bottom: 8rpx;
 }
 
 /* 设计指南卡片描述 */
 .prompt-card-desc {
   font-size: 22rpx;
-  color: #666;
+  color: @ohsd-markdown-blockquote-text;
   line-height: 1.5;
 }
 
 /* 设计指南卡片 hover 效果 */
 .prompt-card:hover {
-  border-color: #1677ff;
+  border-color: @ohsd-primary;
 }
 
 /* 消息列表 */
@@ -1552,19 +1754,19 @@ const renderMarkdown = (content) => {
 }
 
 .assistant-avatar {
-  background: #f0f0f5;
-  border: 1rpx solid rgba(0, 0, 0, 0.06);
+  background: @ohsd-chat-input-well;
+  border: 1rpx solid @ohsd-border-hairline;
 }
 
 .user-avatar-msg {
-  background: linear-gradient(135deg, #ff4d4f, #d9363e);
-  box-shadow: 0 2rpx 8rpx rgba(255, 77, 79, 0.3);
+  background: linear-gradient(135deg, @ohsd-color-error, @ohsd-danger-deep);
+  box-shadow: 0 2rpx 8rpx @ohsd-danger-shadow;
 }
 
 .user-avatar-msg-text {
   font-size: 22rpx;
   font-weight: 700;
-  color: #fff;
+  color: @ohsd-white;
 }
 
 /* 气泡容器 */
@@ -1619,14 +1821,14 @@ const renderMarkdown = (content) => {
 
 /* 用户气泡：深色 */
 .bubble-user {
-  background: #f2f2f7;
+  background: @ohsd-bg-ios;
   border-bottom-right-radius: 6rpx;
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2rpx 8rpx @ohsd-shadow-message;
 }
 
 /* AI 气泡：灰色背景 */
 .bubble-assistant {
-  background: #f2f2f7;
+  background: @ohsd-bg-ios;
   border-bottom-left-radius: 6rpx;
   width: 100%;
   box-sizing: border-box;
@@ -1635,7 +1837,7 @@ const renderMarkdown = (content) => {
 
 .bubble-text-user {
   font-size: 27rpx;
-  color: #0a0a0a;
+  color: @ohsd-text-strong-hex;
   line-height: 1.6;
 }
 
@@ -1651,7 +1853,7 @@ const renderMarkdown = (content) => {
   width: 8rpx;
   height: 8rpx;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.25);
+  background: @ohsd-fill-25;
   animation: typingDot 1.2s ease-in-out infinite;
 }
 
@@ -1677,7 +1879,7 @@ const renderMarkdown = (content) => {
 /* Markdown 内容 */
 .bubble-md {
   font-size: 27rpx;
-  color: rgba(0, 0, 0, 0.82);
+  color: @ohsd-text-82;
   line-height: 1.65;
   width: 100%;
   box-sizing: border-box;
@@ -1689,7 +1891,7 @@ const renderMarkdown = (content) => {
 /* 输入区域 */
 .input-area {
   flex-shrink: 0;
-  background: #fff;
+  background: @ohsd-white;
   padding: 12rpx 20rpx 20rpx;
   display: flex;
   flex-direction: column;
@@ -1698,31 +1900,203 @@ const renderMarkdown = (content) => {
   transition: all 0.3s ease;
 }
 
+/* 底部单行输入面板（替代旧的 input-container / textarea 布局） */
+.chat-input-card {
+  width: 100%;
+  background: @ohsd-white;
+  border-radius: 28rpx;
+  padding: 16rpx 18rpx 14rpx;
+  box-sizing: border-box;
+  border: 1rpx solid @ohsd-border-hairline;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  transition: all 0.2s ease;
+}
+
+.chat-input-card--focused {
+  border-color: @ohsd-primary;
+}
+
+.chat-input-top-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.chat-input-icon-btn {
+  height: 52rpx;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  background: @ohsd-bg-page;
+  border: 1rpx solid @ohsd-border-light;
+  padding: 0 16rpx;
+  gap: 10rpx;
+  white-space: nowrap;
+  color: @ohsd-text-secondary;
+}
+
+.chat-input-input {
+  flex: 1;
+  min-width: 0;
+  height: 72rpx;
+  box-sizing: border-box;
+  font-size: 24rpx;
+  color: @ohsd-text-near-primary;
+  padding: 0 12rpx 0 0;
+  line-height: 72rpx;
+  background: transparent;
+}
+
+.chat-input-textarea {
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 72rpx;
+  max-height: 72rpx !important;
+  font-size: 24rpx;
+  color: @ohsd-text-near-primary;
+  line-height: 1.4;
+  background: transparent;
+  padding: 18rpx 0;
+  border: none;
+  outline: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  resize: none;
+}
+
+.chat-input-textarea-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-input-placeholder {
+  color: @ohsd-text-25;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.chat-input-send-btn {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 18rpx;
+  background-color: @ohsd-primary-soft;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chat-input-send-btn--active {
+  background-color: @ohsd-primary;
+}
+
+.chat-input-send-btn--loading {
+  background-color: @ohsd-primary;
+  opacity: 0.85;
+}
+
+.chat-input-send-icon {
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.chat-voice-btn {
+  flex: 1;
+  min-width: 0;
+  height: 72rpx;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 0;
+  background: @ohsd-bg-page;
+  border: 1rpx solid @ohsd-border-light;
+  color: @ohsd-text-secondary;
+}
+
+.chat-voice-btn-text {
+  font-size: 24rpx;
+  color: inherit;
+  line-height: 1;
+}
+
+.chat-input-action-label {
+  font-size: 22rpx;
+  color: inherit;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.chat-input-language-btn {
+  height: 52rpx;
+  border-radius: 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+  background: @ohsd-bg-page;
+  border: 1rpx solid @ohsd-border-light;
+  padding: 0 16rpx;
+  gap: 10rpx;
+  white-space: nowrap;
+  color: @ohsd-text-secondary;
+}
+
+.chat-input-language-btn--active {
+  background-color: @ohsd-primary;
+  border-color: @ohsd-primary;
+  color: #ffffff;
+}
+
+.chat-quick-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.chat-input-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12rpx;
+}
+
+.chat-input-send-btn {
+  margin-left: auto;
+}
+
 /* 输入框容器 - 包含预览和输入框 */
 .input-container {
   display: flex;
   flex-direction: column;
   gap: 0;
-  border: 2rpx solid rgba(0, 0, 0, 0.15);
+  border: 2rpx solid @ohsd-border-strong;
   border-radius: 20rpx;
   transition: all 0.3s ease;
   overflow: hidden;
 }
 
 .input-container.has-attachments {
-  border-color: #1677ff;
+  border-color: @ohsd-primary;
 }
 
 .input-container.focused {
-  border-color: #1677ff;
+  border-color: @ohsd-primary;
 }
 
 /* 附件预览容器 */
 .attachment-preview-container {
   width: 100%;
-  background: rgba(0, 0, 0, 0.02);
+  background: @ohsd-fill-02;
   padding: 12rpx 12rpx 12rpx 12rpx;
-  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1rpx solid @ohsd-border-hairline;
 }
 
 .attachment-preview-list {
@@ -1730,6 +2104,7 @@ const renderMarkdown = (content) => {
   gap: 12rpx;
   flex-wrap: wrap;
   width: 100%;
+  justify-content: center;
 }
 
 /* 附件项 - 图片 */
@@ -1745,7 +2120,7 @@ const renderMarkdown = (content) => {
   height: 96rpx;
   border-radius: 8rpx;
   object-fit: cover;
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
+  border: 1rpx solid @ohsd-border-subtle-08;
   transition: all 0.2s ease;
 }
 
@@ -1768,9 +2143,9 @@ const renderMarkdown = (content) => {
 /* 附件项 - 文档 */
 .att-item-doc {
   width: 120rpx;
-  background: rgba(0, 0, 0, 0.04);
+  background: @ohsd-fill-04;
   border-radius: 8rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.08);
+  border: 1rpx solid @ohsd-border-subtle-08;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1805,7 +2180,7 @@ const renderMarkdown = (content) => {
 
 .doc-name {
   font-size: 18rpx;
-  color: rgba(0, 0, 0, 0.85);
+  color: @ohsd-text-near-primary;
   line-height: 1.3;
   word-break: break-all;
   overflow: hidden;
@@ -1820,7 +2195,7 @@ const renderMarkdown = (content) => {
 
 .doc-size {
   font-size: 16rpx;
-  color: rgba(0, 0, 0, 0.45);
+  color: @ohsd-text-tertiary;
   line-height: 1.2;
 }
 
@@ -1832,7 +2207,7 @@ const renderMarkdown = (content) => {
   width: 32rpx;
   height: 32rpx;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
+  background: @ohsd-fill-55;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1842,15 +2217,51 @@ const renderMarkdown = (content) => {
 }
 
 .att-remove:active {
-  background: rgba(0, 0, 0, 0.75);
+  background: @ohsd-fill-75;
   transform: scale(1.1);
 }
 
 .att-remove-text {
   font-size: 20rpx;
-  color: #fff;
+  color: @ohsd-white;
   line-height: 1;
   font-weight: bold;
+}
+
+.input-field-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.input-text-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 72rpx;
+  max-height: 120rpx;
+  overflow: hidden;
+}
+
+.input-char-count {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 20rpx;
+  line-height: 1.2;
+  color: @ohsd-text-muted;
+  padding-right: 6rpx;
+  margin: 0;
+}
+
+.input-char-count--max {
+  color: @ohsd-color-error;
+  font-weight: 500;
 }
 
 .input-row {
@@ -1860,7 +2271,7 @@ const renderMarkdown = (content) => {
   background: transparent;
   border: none;
   border-radius: 0;
-  padding: 12rpx 12rpx 12rpx 18rpx;
+  padding: 0 4rpx 0 18rpx;
   min-height: 80rpx;
   transition: all 0.2s ease;
 }
@@ -1870,7 +2281,7 @@ const renderMarkdown = (content) => {
 }
 
 .input-container.has-attachments .input-row {
-  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
+  border-top: 1rpx solid @ohsd-border-hairline;
   padding-top: 12rpx;
 }
 
@@ -1886,108 +2297,47 @@ const renderMarkdown = (content) => {
 
 .input-action-icon {
   font-size: 32rpx;
-  color: rgba(0, 0, 0, 0.5);
+  color: @ohsd-text-50;
   line-height: 1;
 }
 
 .input-box {
   flex: 1;
+  width: 100%;
+  display: block;
   font-size: 24rpx;
-  color: rgba(0, 0, 0, 0.85);
+  color: @ohsd-text-near-primary;
   background: transparent;
-  min-height: 48rpx;
-  max-height: 160rpx;
-  line-height: 1.5;
+  min-height: 72rpx;
+  max-height: 120rpx !important;
+  box-sizing: border-box;
+  line-height: 1.4;
   padding: 8rpx 0;
   border: none;
   outline: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  resize: none;
+}
+
+.input-box--empty {
+  /* 空态 placeholder 需要单独校准垂直居中 */
+  padding: 19rpx 0;
+  height: 72rpx !important;
+  min-height: 72rpx !important;
+  max-height: 72rpx !important;
+  overflow-y: hidden;
 }
 
 .input-box:focus {
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2);
+  border-color: @ohsd-primary;
+  box-shadow: 0 0 0 2px @ohsd-primary-focus-glow;
 }
 
 .input-placeholder {
-  color: rgba(0, 0, 0, 0.25);
-  line-height: 1.8;
+  color: @ohsd-text-25;
+  line-height: 1.4;
   font-size: 24rpx;
-}
-
-.input-buttons {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  margin-left: auto;
-  margin-top: 4rpx;
-  padding-bottom: 16rpx;
-}
-
-.new-session-btn {
-  height: 56rpx;
-  min-width: 120rpx;
-  padding: 0 20rpx;
-  border-radius: 20rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.new-session-text {
-  font-size: 22rpx;
-  color: rgba(0, 0, 0, 0.45);
-  white-space: nowrap;
-}
-
-.send-btn {
-  width: auto;
-  min-width: 90rpx;
-  height: 56rpx;
-  border-radius: 20rpx;
-  background: #ff4d4f;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 24rpx;
-  flex-shrink: 0;
-  transition: all 0.15s ease;
-}
-
-.send-btn:active {
-  box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.6);
-  animation: pulse-red 0.4s ease-out;
-}
-
-.send-btn-active {
-  background: #ff4d4f;
-}
-
-@keyframes pulse-red {
-  0% {
-    box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.8);
-  }
-  100% {
-    box-shadow: 0 0 0 12rpx rgba(255, 77, 79, 0);
-  }
-}
-
-.send-icon {
-  font-size: 22rpx;
-  color: #fff;
-  line-height: 1;
-  font-weight: 600;
-  letter-spacing: 1rpx;
-}
-
-.send-spinner {
-  width: 28rpx;
-  height: 28rpx;
-  border: 3rpx solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -1997,26 +2347,6 @@ const renderMarkdown = (content) => {
 
   to {
     transform: rotate(360deg);
-  }
-}
-
-/* New Session 按钮脉冲效果 */
-.new-session-btn.pulse-active {
-  background: rgba(22, 119, 255, 0.15);
-  box-shadow: 0 0 0 0 rgba(22, 119, 255, 0.6);
-  animation: pulse-blue 0.6s ease-out;
-}
-
-.new-session-btn.pulse-active .new-session-text {
-  color: #1677ff;
-}
-
-@keyframes pulse-blue {
-  0% {
-    box-shadow: 0 0 0 0 rgba(22, 119, 255, 0.8);
-  }
-  100% {
-    box-shadow: 0 0 0 16rpx rgba(22, 119, 255, 0);
   }
 }
 </style>

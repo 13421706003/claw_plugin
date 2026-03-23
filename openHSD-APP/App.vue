@@ -12,12 +12,14 @@
 	}
 </script>
 
-<style>
+<style lang="less">
+	@import './styles/theme.less';
+
 	/* ===== 全局重置 ===== */
 	page {
-		background-color: #ffffff;
+		background-color: @ohsd-app-page-bg;
 		font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
-		color: rgba(0, 0, 0, 0.88);
+		color: @ohsd-text-primary;
 		box-sizing: border-box;
 	}
 
@@ -61,28 +63,28 @@
 
 	.markdown-body p { margin: 4px 0 6px; }
 
-	.markdown-body h1 { font-size: 1.4em; font-weight: 700; margin: 14px 0 6px; color: #1a1a1a; }
-	.markdown-body h2 { font-size: 1.2em; font-weight: 700; margin: 12px 0 5px; color: #1a1a1a; }
-	.markdown-body h3 { font-size: 1em; font-weight: 700; margin: 10px 0 4px; padding-left: 8px; border-left: 3px solid #bbb; }
+	.markdown-body h1 { font-size: 1.4em; font-weight: 700; margin: 14px 0 6px; color: @ohsd-markdown-heading; }
+	.markdown-body h2 { font-size: 1.2em; font-weight: 700; margin: 12px 0 5px; color: @ohsd-markdown-heading; }
+	.markdown-body h3 { font-size: 1em; font-weight: 700; margin: 10px 0 4px; padding-left: 8px; border-left: 3px solid @ohsd-markdown-h3-border; }
 
-	.markdown-body strong { font-weight: 700; color: #111; }
+	.markdown-body strong { font-weight: 700; color: @ohsd-markdown-strong; }
 
 	.markdown-body code {
-		background: #f0f0f0;
+		background: @ohsd-markdown-code-bg;
 		padding: 1px 5px;
 		border-radius: 3px;
 		font-family: 'Courier New', monospace;
 		font-size: 0.88em;
-		color: #d56161;
+		color: @ohsd-markdown-code;
 	}
 
 	.markdown-body pre {
-		background: #f6f8fa;
+		background: @ohsd-markdown-pre-bg;
 		padding: 10px 14px;
 		border-radius: 6px;
 		overflow-x: auto;
 		margin: 6px 0;
-		border: 1px solid #eaecef;
+		border: 1px solid @ohsd-markdown-pre-border;
 	}
 
 	.markdown-body pre code {
@@ -100,10 +102,10 @@
 	.markdown-body li { margin: 3px 0; line-height: 1.6; }
 
 	.markdown-body blockquote {
-		border-left: 3px solid #d0d0d0;
+		border-left: 3px solid @ohsd-markdown-blockquote-border;
 		padding: 2px 0 2px 12px;
 		margin: 6px 0;
-		color: #666;
+		color: @ohsd-markdown-blockquote-text;
 	}
 
 	.markdown-body table {
@@ -114,14 +116,14 @@
 	}
 
 	.markdown-body th, .markdown-body td {
-		border: 1px solid #e0e0e0;
+		border: 1px solid @ohsd-markdown-table-border;
 		padding: 5px 10px;
 		text-align: left;
 	}
 
-	.markdown-body th { background: #f5f5f5; font-weight: 600; }
-	.markdown-body tr:nth-child(even) td { background: #fafafa; }
+	.markdown-body th { background: @ohsd-markdown-table-head-bg; font-weight: 600; }
+	.markdown-body tr:nth-child(even) td { background: @ohsd-markdown-table-row-alt; }
 
 	.markdown-body img { max-width: 100%; border-radius: 4px; }
-	.markdown-body hr { border: none; border-top: 1px solid #ebebeb; margin: 8px 0; }
+	.markdown-body hr { border: none; border-top: 1px solid @ohsd-markdown-hr; margin: 8px 0; }
 </style>

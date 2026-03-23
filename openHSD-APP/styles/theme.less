@@ -1,0 +1,140 @@
+/**
+ * openHSD APP — 全局颜色与设计 token（Less）
+ * 页面中 @import 本文件后使用 @ohsd-* 变量。
+ */
+
+// —— 基础色 ——
+@ohsd-white: #ffffff;
+@ohsd-black: #000000;
+
+// —— 背景 ——
+@ohsd-bg-page: #fafafa;
+@ohsd-bg-surface: #ffffff;
+@ohsd-bg-ios: #f2f2f7;
+@ohsd-bg-muted: #f6f6f6;
+
+// —— 文本（黑 + 透明度）——
+@ohsd-text-primary: rgba(0, 0, 0, 0.88);
+@ohsd-text-secondary: rgba(0, 0, 0, 0.55);
+@ohsd-text-tertiary: rgba(0, 0, 0, 0.45);
+@ohsd-text-muted: rgba(0, 0, 0, 0.42);
+@ohsd-text-subtle: rgba(0, 0, 0, 0.38);
+@ohsd-text-faint: rgba(0, 0, 0, 0.28);
+@ohsd-text-caption: rgba(0, 0, 0, 0.22);
+@ohsd-text-near-primary: rgba(0, 0, 0, 0.85);
+@ohsd-text-ghost: rgba(0, 0, 0, 0.3);
+@ohsd-text-strong: #262626;
+
+// —— 边框 ——
+@ohsd-border-default: rgba(0, 0, 0, 0.12);
+@ohsd-border-focus: rgba(0, 0, 0, 0.55);
+@ohsd-border-hairline: rgba(0, 0, 0, 0.06);
+@ohsd-border-light: rgba(0, 0, 0, 0.1);
+
+// —— 主按钮（登录/注册深色按钮）——
+@ohsd-btn-primary-bg: rgba(0, 0, 0, 0.88);
+@ohsd-btn-primary-text: @ohsd-white;
+
+// —— 品牌区（Logo 底台）——
+@ohsd-brand-ring-start: #f2f2f2;
+@ohsd-brand-ring-end: #f8f8f8;
+@ohsd-shadow-elevated: rgba(0, 0, 0, 0.08);
+
+// —— 语义：错误 / 成功 ——
+@ohsd-color-error: #ff4d4f;
+@ohsd-color-error-text: #cf1322;
+@ohsd-bg-error-strip: rgba(255, 77, 79, 0.07);
+@ohsd-border-error: rgba(255, 77, 79, 0.7);
+@ohsd-color-error-dismiss: rgba(207, 19, 34, 0.5);
+
+@ohsd-color-success-text: #389e0d;
+@ohsd-bg-success-strip: rgba(82, 196, 26, 0.08);
+
+// —— 点阵地图背景 ——
+@ohsd-map-opacity: 0.58;
+@ohsd-map-image: '/static/dotted-map-bg.svg';
+@ohsd-map-position-x: 50%;
+@ohsd-map-position-y: 4%;
+@ohsd-map-size: 158% auto;
+
+// —— 加载指示 ——
+@ohsd-spin-track: rgba(255, 255, 255, 0.35);
+@ohsd-spin-track-dark: rgba(0, 0, 0, 0.08);
+@ohsd-spin-accent: @ohsd-color-error;
+
+// —— App 全局 / Markdown（rich-text）——
+@ohsd-app-page-bg: @ohsd-white;
+@ohsd-markdown-heading: #1a1a1a;
+@ohsd-markdown-strong: #111111;
+@ohsd-markdown-code: #d56161;
+@ohsd-markdown-code-bg: #f0f0f0;
+@ohsd-markdown-pre-bg: #f6f8fa;
+@ohsd-markdown-pre-border: #eaecef;
+@ohsd-markdown-blockquote-border: #d0d0d0;
+@ohsd-markdown-blockquote-text: #666666;
+@ohsd-markdown-table-border: #e0e0e0;
+@ohsd-markdown-table-head-bg: #f5f5f5;
+@ohsd-markdown-table-row-alt: @ohsd-bg-page;
+@ohsd-markdown-h3-border: #bbbbbb;
+@ohsd-markdown-hr: #ebebeb;
+
+// —— 产品主色（链接、焦点、发送按钮）——
+@ohsd-primary: #1677ff;
+@ohsd-primary-muted: rgba(22, 119, 255, 0.12);
+@ohsd-primary-ring: rgba(22, 119, 255, 0.1);
+@ohsd-primary-soft: rgba(22, 119, 255, 0.35);
+@ohsd-primary-focus-glow: rgba(22, 119, 255, 0.2);
+@ohsd-surface-tint-blue: #f0f7ff;
+
+// —— 成功（在线点、连接徽章）——
+@ohsd-success: #52c41a;
+@ohsd-success-muted: rgba(82, 196, 26, 0.1);
+@ohsd-success-ring: rgba(82, 196, 26, 0.25);
+
+// —— 危险渐变 / 阴影（与 @ohsd-color-error 搭配）——
+@ohsd-danger-deep: #d9363e;
+@ohsd-danger-muted: rgba(255, 77, 79, 0.08);
+@ohsd-danger-faint: rgba(255, 77, 79, 0.06);
+@ohsd-danger-shadow: rgba(255, 77, 79, 0.3);
+
+// —— 文本透明度阶梯（补充 @ohsd-text-*）——
+@ohsd-text-75: rgba(0, 0, 0, 0.75);
+@ohsd-text-65: rgba(0, 0, 0, 0.65);
+@ohsd-text-60: rgba(0, 0, 0, 0.6);
+@ohsd-text-82: rgba(0, 0, 0, 0.82);
+@ohsd-text-50: rgba(0, 0, 0, 0.5);
+@ohsd-text-25: rgba(0, 0, 0, 0.25);
+@ohsd-text-body-hex: #333333;
+@ohsd-text-caption-hex: #999999;
+@ohsd-text-hint-hex: #aaaaaa;
+@ohsd-text-dim-hex: #bbbbbb;
+@ohsd-text-strong-hex: #0a0a0a;
+
+// —— 黑色浅叠层 / 描边 ——
+@ohsd-overlay-light: rgba(0, 0, 0, 0.15);
+@ohsd-fill-04: rgba(0, 0, 0, 0.04);
+@ohsd-fill-05: rgba(0, 0, 0, 0.05);
+@ohsd-fill-03: rgba(0, 0, 0, 0.03);
+@ohsd-fill-02: rgba(0, 0, 0, 0.02);
+@ohsd-fill-25: rgba(0, 0, 0, 0.25);
+@ohsd-fill-55: rgba(0, 0, 0, 0.55);
+@ohsd-fill-75: rgba(0, 0, 0, 0.75);
+@ohsd-shadow-message: rgba(0, 0, 0, 0.15);
+@ohsd-border-subtle-08: rgba(0, 0, 0, 0.08);
+@ohsd-border-subtle-04: rgba(0, 0, 0, 0.04);
+@ohsd-border-strong: rgba(0, 0, 0, 0.15);
+
+// —— 白透明 ——
+@ohsd-on-primary-ring: rgba(255, 255, 255, 0.35);
+@ohsd-glass-surface: rgba(255, 255, 255, 0.65);
+@ohsd-glass-surface-hover: rgba(255, 255, 255, 0.8);
+
+// —— 聊天页表面 ——
+@ohsd-chat-divider: #f0f0f0;
+@ohsd-chat-input-well: #f0f0f5;
+@ohsd-chat-thumb: #d5d5d5;
+@ohsd-chat-border-soft: #eeeeee;
+@ohsd-claw-card-bg: #f8fffe;
+@ohsd-claw-card-border: #d9f7be;
+@ohsd-welcome-grad-start: #e5f4ff;
+@ohsd-welcome-grad-end: #efe7ff;

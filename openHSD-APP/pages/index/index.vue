@@ -25,24 +25,28 @@ onMounted(() => {
   setTimeout(() => {
     const token = storage.getToken()
     if (token) {
-      uni.reLaunch({ url: '/pages/chat/chat' })
+      uni.navigateTo({ url: '/pages/chat/chat', animationType: 'slide-in-right', animationDuration: 200 })
     } else {
-      uni.reLaunch({ url: '/pages/login/login' })
+      uni.navigateTo({ url: '/pages/login/login', animationType: 'slide-in-right', animationDuration: 200 })
     }
   }, 600)
 })
 </script>
 
-<style scoped>
+<style lang="less" scoped>
+@import '../../styles/theme.less';
+
 .splash {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #fafafa;
+  background: @ohsd-bg-page;
   gap: 48rpx;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
 }
 
 .splash-logo {
@@ -55,7 +59,7 @@ onMounted(() => {
   width: 72rpx;
   height: 72rpx;
   border-radius: 18rpx;
-  background: #f2f2f7;
+  background: @ohsd-bg-ios;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -70,7 +74,7 @@ onMounted(() => {
 .logo-name {
   font-size: 30rpx;
   font-weight: 700;
-  color: rgba(0, 0, 0, 0.85);
+  color: @ohsd-text-near-primary;
   letter-spacing: 4rpx;
   line-height: 1;
 }
@@ -78,7 +82,7 @@ onMounted(() => {
 .logo-sub {
   font-size: 20rpx;
   font-weight: 500;
-  color: rgba(0, 0, 0, 0.3);
+  color: @ohsd-text-ghost;
   letter-spacing: 2rpx;
   line-height: 1;
 }
@@ -86,8 +90,8 @@ onMounted(() => {
 .splash-spinner {
   width: 48rpx;
   height: 48rpx;
-  border: 3rpx solid rgba(0, 0, 0, 0.08);
-  border-top-color: #ff4d4f;
+  border: 3rpx solid @ohsd-spin-track-dark;
+  border-top-color: @ohsd-spin-accent;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
