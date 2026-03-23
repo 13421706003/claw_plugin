@@ -1,131 +1,126 @@
 <template>
-  <view class="login-page">
-
-    <!-- 背景层 -->
-    <view class="bg-glow bg-glow-1"></view>
-    <view class="bg-glow bg-glow-2"></view>
-    <view class="bg-grid"></view>
-
-    <!-- 注册卡片 -->
-    <view class="login-card">
-
-      <!-- Logo -->
-      <view class="card-logo">
-        <view class="logo-icon">
+  <view class="page">
+    <view class="map-bg"></view>
+    <view class="inner">
+      <view class="brand">
+        <view class="brand-ring">
           <image
+            class="brand-img"
             src="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*eco6RrQhxbMAAAAAAAAAAAAADgCCAQ/original"
             mode="aspectFit"
-            style="width: 32rpx; height: 32rpx;"
           />
         </view>
-        <view class="logo-text">
-          <text class="logo-name">OPENHSD</text>
-          <text class="logo-sub">GATEWAY DASHBOARD</text>
-        </view>
+        <text class="brand-name">OPENHSD</text>
+        <text class="brand-sub">网关对话</text>
       </view>
 
-      <!-- 标题 -->
-      <view class="card-header">
-        <text class="card-title">创建账号</text>
-        <text class="card-subtitle">注册后即可开始使用</text>
+      <view v-if="errorMsg" class="strip strip--err">
+        <text class="strip-msg">{{ errorMsg }}</text>
+        <text class="strip-x" @tap.stop="errorMsg = ''">×</text>
       </view>
 
-      <!-- 错误提示 -->
-      <view v-if="errorMsg" class="error-bar">
-        <text class="error-icon">!</text>
-        <text class="error-text">{{ errorMsg }}</text>
-        <view class="error-close" @tap="errorMsg = ''">
-          <text class="error-close-text">×</text>
-        </view>
+      <view v-if="successMsg" class="strip strip--ok">
+        <text class="strip-msg strip-msg--ok">{{ successMsg }}</text>
       </view>
 
-      <!-- 成功提示 -->
-      <view v-if="successMsg" class="success-bar">
-        <text class="success-icon">✓</text>
-        <text class="success-text">{{ successMsg }}</text>
-      </view>
-
-      <!-- 用户名 -->
-      <view class="field-group">
-        <text class="field-label">用户名</text>
-        <view class="field-wrap" :class="{ focused: focusedField === 'username', error: errors.username }">
-          <text class="field-icon-text">👤</text>
+      <view class="field">
+        <text class="label">用户名</text>
+        <view
+          class="line line--fill"
+          :class="{ on: focusedField === 'username', bad: errors.username }"
+        >
+          <view class="field-icon-wrap">
+            <CircleUser :size="18" :stroke-width="1.75" :color="iconColor" />
+          </view>
           <input
-            class="field-input"
+            class="input"
             v-model="username"
             type="text"
             placeholder="请输入用户名"
-            placeholder-class="field-placeholder"
+            placeholder-class="ph"
             @focus="focusedField = 'username'"
             @blur="focusedField = ''"
           />
         </view>
-        <text v-if="errors.username" class="field-error">{{ errors.username }}</text>
+        <text v-if="errors.username" class="hint">{{ errors.username }}</text>
       </view>
 
-      <!-- 密码 -->
-      <view class="field-group">
-        <text class="field-label">密码</text>
-        <view class="field-wrap" :class="{ focused: focusedField === 'password', error: errors.password }">
-          <text class="field-icon-text">🔒</text>
+      <view class="field">
+        <text class="label">密码</text>
+        <view
+          class="line line--fill"
+          :class="{ on: focusedField === 'password', bad: errors.password }"
+        >
+          <view class="field-icon-wrap">
+            <LockKeyhole :size="18" :stroke-width="1.75" :color="iconColor" />
+          </view>
           <input
-            class="field-input"
+            class="input"
             v-model="password"
             :type="showPassword ? 'text' : 'password'"
-            placeholder="至少 6 位字符"
-            placeholder-class="field-placeholder"
+            placeholder="至少 6 位"
+            placeholder-class="ph"
             @focus="focusedField = 'password'"
             @blur="focusedField = ''"
           />
-          <view class="eye-btn" @tap="showPassword = !showPassword">
-            <text class="eye-icon">{{ showPassword ? '👁' : '🙈' }}</text>
+          <view class="eye-hit" @tap.stop="showPassword = !showPassword">
+            <ScanEye v-if="showPassword" :size="18" :stroke-width="1.75" :color="iconColor" />
+            <EyeClosed v-else :size="18" :stroke-width="1.75" :color="iconColor" />
           </view>
         </view>
-        <text v-if="errors.password" class="field-error">{{ errors.password }}</text>
+        <text v-if="errors.password" class="hint">{{ errors.password }}</text>
       </view>
 
-      <!-- 确认密码 -->
-      <view class="field-group">
-        <text class="field-label">确认密码</text>
-        <view class="field-wrap" :class="{ focused: focusedField === 'confirm', error: errors.confirm }">
-          <text class="field-icon-text">🔒</text>
+      <view class="field">
+        <text class="label">确认密码</text>
+        <view
+          class="line line--fill"
+          :class="{ on: focusedField === 'confirm', bad: errors.confirm }"
+        >
+          <view class="field-icon-wrap">
+            <LockKeyhole :size="18" :stroke-width="1.75" :color="iconColor" />
+          </view>
           <input
-            class="field-input"
+            class="input"
             v-model="confirm"
             :type="showPassword ? 'text' : 'password'"
             placeholder="再次输入密码"
-            placeholder-class="field-placeholder"
+            placeholder-class="ph"
             @focus="focusedField = 'confirm'"
             @blur="focusedField = ''"
           />
+          <view class="eye-hit" @tap.stop="showPassword = !showPassword">
+            <ScanEye v-if="showPassword" :size="18" :stroke-width="1.75" :color="iconColor" />
+            <EyeClosed v-else :size="18" :stroke-width="1.75" :color="iconColor" />
+          </view>
         </view>
-        <text v-if="errors.confirm" class="field-error">{{ errors.confirm }}</text>
+        <text v-if="errors.confirm" class="hint">{{ errors.confirm }}</text>
       </view>
 
-      <!-- 注册按钮 -->
-      <view class="login-btn" :class="{ loading }" @tap="onRegister">
-        <view class="btn-inner">
-          <view v-if="loading" class="btn-spinner"></view>
-          <text class="btn-text">{{ loading ? '注册中' : '立即注册' }}</text>
+      <view class="btn" :class="{ loading }" @tap="onRegister">
+        <view class="btn-in">
+          <view v-if="loading" class="spin"></view>
+          <text class="btn-t">{{ loading ? '注册中…' : '注册' }}</text>
         </view>
       </view>
 
-      <!-- 底部登录链接 -->
-      <view class="card-footer">
-        <text class="footer-text">已有账号？</text>
-        <text class="register-link" @tap="goLogin">立即登录</text>
+      <view class="foot">
+        <text class="foot-a">已有账号？</text>
+        <text class="foot-b" @tap="goLogin">登录</text>
       </view>
 
+      <text class="ver">openHSD · 2026</text>
     </view>
-
-    <text class="page-version">openHSD · v2026</text>
-
   </view>
 </template>
 
 <script setup>
 import { ref, reactive } from 'vue'
 import { register as registerApi } from '../../api/auth.js'
+import { CircleUser, LockKeyhole, ScanEye, EyeClosed } from 'lucide-vue-next'
+import { ICON_COLOR } from '../../styles/theme-colors.js'
+
+const iconColor = ICON_COLOR
 
 const username     = ref('')
 const password     = ref('')
@@ -153,7 +148,9 @@ const onRegister = async () => {
   try {
     await registerApi(username.value.trim(), password.value)
     successMsg.value = '注册成功！正在跳转...'
-    setTimeout(() => { uni.navigateBack() }, 1200)
+    setTimeout(() => {
+      uni.navigateTo({ url: '/pages/login/login', animationType: 'slide-in-right', animationDuration: 200 })
+    }, 1200)
   } catch (e) {
     errorMsg.value = e.message || '注册失败，请稍后重试'
   } finally {
@@ -161,114 +158,296 @@ const onRegister = async () => {
   }
 }
 
-const goLogin = () => { uni.navigateBack() }
+const goLogin = () => {
+  uni.navigateTo({ url: '/pages/login/login', animationType: 'slide-in-right', animationDuration: 200 })
+}
 </script>
 
-<style scoped>
-/* ===== 页面基础 ===== */
-.login-page {
-  width: 100vw;
-  height: 100vh;
+<style lang="less" scoped>
+@import '../../styles/theme.less';
+
+.page {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+  background: @ohsd-bg-page;
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  background: #fafafa;
-  position: relative;
+  align-items: center;
+  padding: calc(28rpx + var(--status-bar-height, 0px)) 56rpx calc(36rpx + env(safe-area-inset-bottom, 0px));
   overflow: hidden;
-  padding: 32rpx;
-  padding-top: calc(24rpx + var(--status-bar-height, 0px));
+}
+
+.map-bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: @ohsd-map-opacity;
+  background-image: url('@{ohsd-map-image}');
+  background-repeat: no-repeat;
+  background-position: @ohsd-map-position-x @ohsd-map-position-y;
+  background-size: @ohsd-map-size;
+}
+
+.inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 620rpx;
+  margin: 0 auto;
+  padding: 0 8rpx;
   box-sizing: border-box;
 }
 
-.bg-grid {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
-  background-size: 64rpx 64rpx;
-}
-.bg-glow { position: fixed; border-radius: 50%; pointer-events: none; filter: blur(80rpx); }
-.bg-glow-1 {
-  width: 500rpx; height: 400rpx;
-  background: radial-gradient(circle, rgba(200,210,255,0.22) 0%, transparent 70%);
-  top: -120rpx; left: 50%; transform: translateX(-50%);
-}
-.bg-glow-2 {
-  width: 400rpx; height: 350rpx;
-  background: radial-gradient(circle, rgba(255,200,200,0.15) 0%, transparent 70%);
-  bottom: -80rpx; right: -60rpx;
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 56rpx;
 }
 
-/* ===== 卡片 ===== */
-.login-card {
-  position: relative; z-index: 10;
+.brand-ring {
+  width: 200rpx;
+  height: 200rpx;
+  border-radius: 48rpx;
+  background: linear-gradient(145deg, @ohsd-brand-ring-start 0%, @ohsd-brand-ring-end 100%);
+  box-shadow: 0 12rpx 40rpx @ohsd-shadow-elevated;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 32rpx;
+}
+
+.brand-img {
+  width: 112rpx;
+  height: 112rpx;
+  flex-shrink: 0;
+}
+
+.brand-name {
+  font-size: 40rpx;
+  font-weight: 700;
+  color: @ohsd-text-primary;
+  letter-spacing: 4rpx;
+  line-height: 1.25;
+  margin-bottom: 12rpx;
+}
+
+.brand-sub {
+  font-size: 26rpx;
+  color: @ohsd-text-muted;
+  line-height: 1.35;
+}
+
+.title {
+  display: block;
   width: 100%;
-  background: #ffffff; border-radius: 28rpx;
-  padding: 40rpx 36rpx 36rpx;
-  box-shadow: 0 4rpx 24rpx rgba(0,0,0,0.06), 0 16rpx 48rpx rgba(0,0,0,0.05);
+  text-align: center;
+  font-size: 46rpx;
+  font-weight: 600;
+  color: @ohsd-text-primary;
+  line-height: 1.25;
+  margin-bottom: 18rpx;
 }
-.card-logo { display: flex; align-items: center; gap: 16rpx; margin-bottom: 32rpx; }
-.logo-icon { width: 56rpx; height: 56rpx; border-radius: 14rpx; background: #f2f2f7; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.logo-text { display: flex; flex-direction: column; gap: 2rpx; }
-.logo-name { font-size: 22rpx; font-weight: 700; color: rgba(0,0,0,0.85); letter-spacing: 4rpx; line-height: 1; }
-.logo-sub { font-size: 16rpx; font-weight: 500; color: rgba(0,0,0,0.3); letter-spacing: 1rpx; line-height: 1; }
 
-.card-header { margin-bottom: 28rpx; }
-.card-title { display: block; font-size: 40rpx; font-weight: 600; color: rgba(0,0,0,0.88); line-height: 1.2; margin-bottom: 6rpx; }
-.card-subtitle { display: block; font-size: 24rpx; color: rgba(0,0,0,0.4); line-height: 1; }
-
-.error-bar {
-  display: flex; align-items: center; gap: 10rpx;
-  background: rgba(255,59,48,0.06); border: 1rpx solid rgba(255,59,48,0.2);
-  border-radius: 14rpx; padding: 14rpx 18rpx; margin-bottom: 24rpx;
+.sub {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 28rpx;
+  color: @ohsd-text-tertiary;
+  line-height: 1.55;
+  margin-bottom: 48rpx;
 }
-.error-icon { font-size: 20rpx; font-weight: 700; color: rgba(200,40,30,0.9); flex-shrink: 0; }
-.error-text { flex: 1; font-size: 24rpx; color: rgba(200,40,30,0.9); }
-.error-close { width: 36rpx; height: 36rpx; display: flex; align-items: center; justify-content: center; }
-.error-close-text { font-size: 28rpx; color: rgba(200,40,30,0.5); line-height: 1; }
 
-.success-bar {
-  display: flex; align-items: center; gap: 10rpx;
-  background: rgba(82,196,26,0.06); border: 1rpx solid rgba(82,196,26,0.25);
-  border-radius: 14rpx; padding: 14rpx 18rpx; margin-bottom: 24rpx;
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 24rpx 28rpx;
+  margin-bottom: 36rpx;
+  border-radius: 16rpx;
 }
-.success-icon { font-size: 22rpx; font-weight: 700; color: rgba(52,150,10,0.9); flex-shrink: 0; }
-.success-text { flex: 1; font-size: 24rpx; color: rgba(52,150,10,0.9); }
 
-.field-group { margin-bottom: 20rpx; }
-.field-label { display: block; font-size: 24rpx; font-weight: 500; color: rgba(0,0,0,0.55); margin-bottom: 10rpx; }
-.field-wrap {
-  display: flex; align-items: center; gap: 12rpx;
-  background: rgba(0,0,0,0.04); border: 2rpx solid transparent;
-  border-radius: 14rpx; padding: 0 18rpx; height: 76rpx;
+.strip--err {
+  background: @ohsd-bg-error-strip;
 }
-.field-wrap.focused { background: #ffffff; border-color: rgba(0,0,0,0.15); }
-.field-wrap.error { border-color: rgba(255,59,48,0.3); background: rgba(255,59,48,0.03); }
-.field-icon-text { font-size: 26rpx; flex-shrink: 0; }
-.field-input { flex: 1; font-size: 26rpx; color: rgba(0,0,0,0.85); background: transparent; height: 76rpx; line-height: 76rpx; }
-.field-placeholder { color: rgba(0,0,0,0.25); }
-.eye-btn { padding: 6rpx; }
-.eye-icon { font-size: 24rpx; }
-.field-error { display: block; font-size: 20rpx; color: rgba(255,59,48,0.85); margin-top: 6rpx; }
 
-.login-btn {
-  width: 100%; height: 80rpx; border-radius: 16rpx;
-  background: rgba(0,0,0,0.84); display: flex; align-items: center; justify-content: center;
-  margin-top: 8rpx;
+.strip--ok {
+  background: @ohsd-bg-success-strip;
 }
-.login-btn.loading { opacity: 0.65; }
-.btn-inner { display: flex; align-items: center; justify-content: center; gap: 12rpx; }
-.btn-text { font-size: 26rpx; font-weight: 600; color: #ffffff; letter-spacing: 3rpx; }
-.btn-spinner { width: 30rpx; height: 30rpx; border: 3rpx solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
 
-.card-footer { display: flex; align-items: center; justify-content: center; gap: 4rpx; margin-top: 28rpx; }
-.footer-text { font-size: 24rpx; color: rgba(0,0,0,0.35); }
-.register-link { font-size: 24rpx; font-weight: 500; color: rgba(0,0,0,0.6); }
+.strip-msg {
+  flex: 1;
+  font-size: 28rpx;
+  color: @ohsd-color-error-text;
+  line-height: 1.45;
+  text-align: left;
+}
 
-.page-version { position: fixed; bottom: 28rpx; left: 50%; transform: translateX(-50%); font-size: 20rpx; color: rgba(0,0,0,0.2); white-space: nowrap; pointer-events: none; z-index: 5; }
+.strip-msg--ok {
+  color: @ohsd-color-success-text;
+}
 
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.strip-x {
+  flex-shrink: 0;
+  font-size: 36rpx;
+  color: @ohsd-color-error-dismiss;
+  padding: 8rpx;
+}
+
+.field {
+  margin-bottom: 44rpx;
+}
+
+.label {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 28rpx;
+  color: @ohsd-text-secondary;
+  margin-bottom: 20rpx;
+}
+
+.line {
+  border-bottom: 2rpx solid @ohsd-border-default;
+  padding-bottom: 12rpx;
+  transition: border-color 0.15s ease;
+}
+
+.line.on {
+  border-bottom-color: @ohsd-border-focus;
+}
+
+.line.bad {
+  border-bottom-color: @ohsd-border-error;
+}
+
+.line--fill {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.field-icon-wrap {
+  width: 36rpx;
+  height: 36rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.9;
+}
+
+.eye-hit {
+  flex-shrink: 0;
+  padding: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input {
+  flex: 1;
+  font-size: 32rpx;
+  color: @ohsd-text-primary;
+  height: 56rpx;
+  line-height: 56rpx;
+  min-height: 56rpx;
+  text-align: left;
+}
+
+.ph {
+  color: @ohsd-text-faint;
+}
+
+.hint {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-size: 24rpx;
+  color: @ohsd-color-error;
+  margin-top: 16rpx;
+}
+
+.btn {
+  width: 100%;
+  height: 100rpx;
+  border-radius: 16rpx;
+  margin-top: 20rpx;
+  background: @ohsd-btn-primary-bg;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn.loading {
+  opacity: 0.75;
+}
+
+.btn-in {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.btn-t {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: @ohsd-btn-primary-text;
+}
+
+.spin {
+  width: 32rpx;
+  height: 32rpx;
+  border: 3rpx solid @ohsd-spin-track;
+  border-top-color: @ohsd-btn-primary-text;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  margin-top: 48rpx;
+}
+
+.foot-a {
+  font-size: 28rpx;
+  color: @ohsd-text-subtle;
+}
+
+.foot-b {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: @ohsd-text-strong;
+}
+
+.ver {
+  display: block;
+  text-align: center;
+  margin-top: 52rpx;
+  font-size: 22rpx;
+  color: @ohsd-text-caption;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
 </style>

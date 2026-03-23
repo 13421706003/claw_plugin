@@ -31,138 +31,6 @@
           </Select>
           <Badge :status="isConnected ? 'success' : 'error'" :text="isConnected ? '已连接' : '未连接'" />
           <span style="color: #999; font-size: 12px">版本 2026.3.6</span>
-
-          <!-- 用户信息按钮 -->
-          <div style="position: relative">
-            <Tooltip title="账号信息">
-              <div
-                @click="onToggleUserPanel"
-                style="
-                  display: flex;
-                  align-items: center;
-                  gap: 6px;
-                  padding: 4px 10px;
-                  border-radius: 6px;
-                  cursor: pointer;
-                  border: 1px solid rgba(0,0,0,0.1);
-                  background: rgba(0,0,0,0.02);
-                  transition: all 0.2s;
-                "
-              >
-                <UserOutlined style="font-size: 13px; color: #666" />
-                <span style="font-size: 12px; color: #555; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                  {{ userStore.user?.username || 'user' }}
-                </span>
-              </div>
-            </Tooltip>
-
-            <!-- 下拉面板 -->
-            <div
-              v-if="showUserPanel"
-              style="
-                position: absolute;
-                top: calc(100% + 8px);
-                right: 0;
-                width: 320px;
-                background: #fff;
-                border-radius: 12px;
-                box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
-                z-index: 1000;
-                overflow: hidden;
-              "
-            >
-              <!-- 面板头部 -->
-              <div style="padding: 16px 16px 12px; border-bottom: 1px solid #f0f0f0">
-                <div style="display: flex; align-items: center; gap: 10px">
-                  <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #ff4d4f, #d9363e); display: flex; align-items: center; justify-content: center">
-                    <UserOutlined style="color: white; font-size: 16px" />
-                  </div>
-                  <div>
-                    <div style="font-size: 14px; font-weight: 600; color: #1a1a1a">{{ userStore.user.value?.username }}</div>
-                    <div style="font-size: 11px; color: #999">userId: {{ userStore.user.value?.userId }}</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Token 区域 -->
-              <div style="padding: 14px 16px 0">
-                <div style="font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px">
-                  连接 Token
-                </div>
-                <div style="background: #f6f6f6; border-radius: 8px; padding: 10px 12px; font-size: 11px; font-family: monospace; color: #333; word-break: break-all; line-height: 1.6; max-height: 72px; overflow-y: auto; border: 1px solid #eee;">
-                  {{ userStore.token }}
-                </div>
-                <div style="display: flex; gap: 8px; margin-top: 8px">
-                  <Button size="small" block :type="tokenCopied ? 'primary' : 'default'" @click="copyToken" style="font-size: 12px; border-radius: 6px">
-                    <template #icon><CopyOutlined /></template>
-                    {{ tokenCopied ? '已复制！' : '复制 Token' }}
-                  </Button>
-                </div>
-                <div style="margin-top: 8px; padding: 7px 10px; background: #fff7e6; border-radius: 6px; border: 1px solid #ffd591">
-                  <div style="font-size: 11px; color: #d46b08; line-height: 1.6">
-                    将此 Token 填入插件 <code style="background: #ffe7ba; padding: 1px 4px; border-radius: 3px">cj.config.json</code> → <code style="background: #ffe7ba; padding: 1px 4px; border-radius: 3px">cloud.token</code>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 在线机器列表 -->
-              <div style="padding: 12px 16px 0">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
-                  <span style="font-size: 11px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px">
-                    在线机器
-                  </span>
-                  <span
-                    @click="fetchClawStatus"
-                    style="font-size: 11px; color: #1677ff; cursor: pointer"
-                  >
-                    {{ loadingStatus ? '刷新中...' : '刷新' }}
-                  </span>
-                </div>
-
-                <!-- 无机器 -->
-                <div v-if="clawList.length === 0" style="padding: 12px; background: #fafafa; border-radius: 8px; border: 1px dashed #e0e0e0; text-align: center">
-                  <div style="font-size: 12px; color: #bbb">暂无在线插件</div>
-                  <div style="font-size: 11px; color: #ccc; margin-top: 2px">请启动 openHSD 插件并填入 Token</div>
-                </div>
-
-                <!-- 机器列表 -->
-                <div v-for="claw in clawList" :key="claw.clawId" style="
-                  padding: 10px 12px;
-                  background: #f8fffe;
-                  border: 1px solid #d9f7be;
-                  border-radius: 8px;
-                  margin-bottom: 6px;
-                ">
-                  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px">
-                    <span style="width: 7px; height: 7px; border-radius: 50%; background: #52c41a; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(82,196,26,0.2)"></span>
-                    <span style="font-size: 12px; font-weight: 600; color: #1a1a1a; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                      {{ claw.clawId }}
-                    </span>
-                  </div>
-                  <div v-if="claw.openClawDeviceId" style="font-size: 10px; color: #888; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
-                    OpenClaw: {{ claw.openClawDeviceId.substring(0, 24) }}...
-                  </div>
-                  <div style="font-size: 10px; color: #aaa; margin-top: 2px">
-                    最后心跳：{{ formatHeartbeat(claw.lastHeartbeat) }}
-                  </div>
-                </div>
-              </div>
-
-              <!-- 退出登录 -->
-              <div style="padding: 12px 16px 14px">
-                <Button danger block size="small" @click="onLogout" style="font-size: 12px; border-radius: 6px">
-                  退出登录
-                </Button>
-              </div>
-            </div>
-
-            <!-- 点击外部关闭 -->
-            <div
-              v-if="showUserPanel"
-              style="position: fixed; inset: 0; z-index: 999"
-              @click="showUserPanel = false; "
-            />
-          </div>
         </div>
       </div>
 
@@ -333,19 +201,13 @@ import { ref, computed, h, watch, nextTick } from 'vue'
 import { marked } from 'marked'
 import {
   Bubble,
-  Conversations,
   Prompts,
   Sender,
   Welcome,
-  Attachments,
 } from 'ant-design-x-vue'
 import {
   Button,
-  Avatar,
-  Space,
-  Flex,
   message,
-  Spin,
   theme,
   Badge,
   Select,
@@ -367,25 +229,20 @@ import {
   HeartOutlined,
   SmileOutlined,
   ReloadOutlined,
-  CopyOutlined,
   LikeOutlined,
   DislikeOutlined,
   CloudUploadOutlined,
-  SettingOutlined,
   SyncOutlined,
-  UserOutlined,
   DesktopOutlined,
   ApiOutlined,
 } from '@ant-design/icons-vue'
 import { loading, messages, sendMessage, isConnected, connect, currentClawId, selectClaw, clearHistory } from '../api/aiService.js'
 import { uploadFiles, validateFile, formatSize } from '../api/fileService.js'
 import { useUserStore } from '../stores/user.js'
-import { useRouter } from 'vue-router'
 import { onMounted } from 'vue'
 import { request } from '../api/request.js'
 
 const userStore = useUserStore()
-const router = useRouter()
 
 // ==================== State ====================
 const inputValue = ref('')
@@ -393,10 +250,7 @@ const chatListRef = ref(null)
 const attachmentsOpen = ref(false)
 const attachedFiles = ref([])
 const currentSession = ref('Main Session')
-const showUserPanel = ref(false)
-const tokenCopied = ref(false)
 const clawList = ref([])
-const loadingStatus = ref(false)
 const selectedClawId = ref(null)
 const attachments = ref([])
 
@@ -451,33 +305,16 @@ watch(messages, () => {
   scrollToBottom()
 }, { deep: true, flush: 'post' })
 
-// ==================== 用户操作 ====================
-const copyToken = () => {
-  // computed ref 在 script 里需要 .value
-  navigator.clipboard.writeText(userStore.token.value).then(() => {
-    tokenCopied.value = true
-    setTimeout(() => { tokenCopied.value = false }, 2000)
-  })
-}
-
-const onLogout = () => {
-  userStore.logout()
-  router.push('/login')
-}
-
 // 查询在线机器列表
 const fetchClawStatus = async () => {
   const userId = userStore.user.value?.userId
   if (!userId) return
-  loadingStatus.value = true
   try {
     const res = await request(`/claw/status?userId=${userId}`)
     const data = await res.json()
     clawList.value = data.clawList || []
   } catch (e) {
     console.error('[ChatView] 查询机器状态失败：', e)
-  } finally {
-    loadingStatus.value = false
   }
 }
 
@@ -498,20 +335,6 @@ const clawOptions = computed(() => {
   }
   return options
 })
-
-// 打开面板时自动刷新机器列表
-const onToggleUserPanel = () => {
-  showUserPanel.value = !showUserPanel.value
-  if (showUserPanel.value) fetchClawStatus()
-}
-
-// 格式化最后心跳时间
-const formatHeartbeat = (ts) => {
-  if (!ts) return '未知'
-  const diff = Date.now() - ts
-  if (diff < 60000) return `${Math.floor(diff / 1000)}s 前`
-  return `${Math.floor(diff / 60000)}min 前`
-}
 
 // ==================== Theme ====================
 const { token } = theme.useToken()

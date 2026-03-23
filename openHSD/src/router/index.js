@@ -1,5 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import LayoutView from '../views/LayoutView.vue'
 import ChatView from '../views/ChatView.vue'
+import ConfigView from '../views/ConfigView.vue'
+import RechargeView from '../views/RechargeView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 
@@ -23,15 +26,30 @@ const router = createRouter({
       meta: { requiresGuest: true },
     },
     {
-      path: '/chat',
-      name: 'Chat',
-      component: ChatView,
+      path: '/',
+      component: LayoutView,
       meta: { requiresAuth: true },
+      children: [
+        {
+          path: 'chat',
+          name: 'Chat',
+          component: ChatView,
+        },
+        {
+          path: 'config',
+          name: 'Config',
+          component: ConfigView,
+        },
+        {
+          path: 'recharge',
+          name: 'Recharge',
+          component: RechargeView,
+        },
+      ],
     },
   ],
 })
 
-// 路由守卫
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('openhsd_token') || sessionStorage.getItem('openhsd_token')
   const isLogged = !!token

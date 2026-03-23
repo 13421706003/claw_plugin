@@ -19,7 +19,7 @@
 			"path": "pages/register/register",
 			"style": {
 				"navigationStyle": "custom",
-				"disableScroll": true
+				"disableScroll": false
 			}
 		},
 		{

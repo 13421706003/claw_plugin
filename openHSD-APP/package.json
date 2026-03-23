@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "generate:dotted-map": "node scripts/generate-dotted-map.mjs"
+  },
+  "dependencies": {
+    "less": "^4.6.4",
+    "lucide-vue-next": "^0.577.0"
+  },
+  "devDependencies": {
+    "svg-dotted-map": "^2.0.1"
+  }
+}

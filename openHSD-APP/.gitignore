@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# uni-app build output (generated)
+unpackage/
+
+# Vite/Vue build caches (in case they exist outside unpackage)
+.vite/
+dist/
+
+# Logs
+logs/
+*.log
+*.tsbuildinfo
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+
