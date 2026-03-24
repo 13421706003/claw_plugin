@@ -1,3 +1,103 @@
+<template>
+  <div class="side-nav" :class="{ collapsed }">
+    <div class="nav-header">
+      <div class="logo">
+        <img src="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*eco6RrQhxbMAAAAAAAAAAAAADgCCAQ/original"
+          alt="logo" width="24" height="24" draggable="false" />
+        <span v-show="!collapsed" class="logo-text">OPENHSD</span>
+      </div>
+      <Tooltip placement="right">
+        <div class="collapse-btn" @click="toggleCollapse">
+          <MenuUnfoldOutlined v-if="collapsed" />
+          <MenuFoldOutlined v-else />
+        </div>
+      </Tooltip>
+    </div>
+
+    <div class="nav-menu">
+      <Tooltip v-for="item in navItems" :key="item.key" :title="collapsed ? item.label : ''" placement="right">
+        <div class="nav-item" :class="{ active: activeKey === item.key }" @click="navigateTo(item.key)">
+          <component :is="item.icon" class="nav-icon" />
+          <span v-show="!collapsed" class="nav-label">{{ item.label }}</span>
+        </div>
+      </Tooltip>
+    </div>
+
+    <div class="nav-footer">
+      <div class="user-avatar" @click="onToggleUserPanel">
+        <div class="avatar-circle">
+          <UserOutlined />
+        </div>
+        <span v-show="!collapsed" class="username">
+          {{ userStore.user?.value?.username || 'user' }}
+        </span>
+      </div>
+
+      <div v-if="showUserPanel" class="user-panel">
+        <div class="panel-header">
+          <div class="panel-avatar">
+            <UserOutlined />
+          </div>
+          <div class="panel-info">
+            <div class="panel-username">{{ userStore.user.value?.username }}</div>
+            <div class="panel-userid">userId: {{ userStore.user.value?.userId }}</div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-title">连接 Token</div>
+          <div class="token-box">{{ userStore.token }}</div>
+          <Button size="small" block :type="tokenCopied ? 'primary' : 'default'" @click="copyToken"
+            style="margin-top: 8px; border-radius: 6px">
+            <template #icon>
+              <CopyOutlined />
+            </template>
+            {{ tokenCopied ? '已复制！' : '复制 Token' }}
+          </Button>
+          <div class="token-tip">
+            将此 Token 填入插件 <code>cj.config.json</code> → <code>cloud.token</code>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-header">
+            <span class="section-title">在线机器</span>
+            <span class="refresh-btn" @click="fetchClawStatus">
+              {{ loadingStatus ? '刷新中...' : '刷新' }}
+            </span>
+          </div>
+
+          <div v-if="clawList.length === 0" class="empty-claw">
+            <div>暂无在线插件</div>
+            <div>请启动 openHSD 插件并填入 Token</div>
+          </div>
+
+          <div v-for="claw in clawList" :key="claw.clawId" class="claw-item">
+            <div class="claw-header">
+              <span class="claw-status-dot"></span>
+              <span class="claw-id">{{ claw.clawId }}</span>
+            </div>
+            <div v-if="claw.openClawDeviceId" class="claw-device">
+              OpenClaw: {{ claw.openClawDeviceId.substring(0, 24) }}...
+            </div>
+            <div class="claw-heartbeat">
+              最后心跳：{{ formatHeartbeat(claw.lastHeartbeat) }}
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-footer">
+          <Button danger block size="small" @click="onLogout" style="border-radius: 6px">
+            退出登录
+          </Button>
+        </div>
+      </div>
+
+      <div v-if="showUserPanel" class="panel-backdrop" @click="showUserPanel = false" />
+    </div>
+  </div>
+</template>
+
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -82,127 +182,6 @@ const formatHeartbeat = (ts) => {
 }
 </script>
 
-<template>
-  <div class="side-nav" :class="{ collapsed }">
-    <div class="nav-header">
-      <div class="logo">
-        <img
-          src="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*eco6RrQhxbMAAAAAAAAAAAAADgCCAQ/original"
-          alt="logo"
-          width="24"
-          height="24"
-          draggable="false"
-        />
-        <span v-show="!collapsed" class="logo-text">OPENHSD</span>
-      </div>
-      <Tooltip placement="right">
-        <div class="collapse-btn" @click="toggleCollapse">
-          <MenuUnfoldOutlined v-if="collapsed" />
-          <MenuFoldOutlined v-else />
-        </div>
-      </Tooltip>
-    </div>
-
-    <div class="nav-menu">
-      <Tooltip
-        v-for="item in navItems"
-        :key="item.key"
-        :title="collapsed ? item.label : ''"
-        placement="right"
-      >
-        <div
-          class="nav-item"
-          :class="{ active: activeKey === item.key }"
-          @click="navigateTo(item.key)"
-        >
-          <component :is="item.icon" class="nav-icon" />
-          <span v-show="!collapsed" class="nav-label">{{ item.label }}</span>
-        </div>
-      </Tooltip>
-    </div>
-
-    <div class="nav-footer">
-      <div class="user-avatar" @click="onToggleUserPanel">
-        <div class="avatar-circle">
-          <UserOutlined />
-        </div>
-        <span v-show="!collapsed" class="username">
-          {{ userStore.user?.value?.username || 'user' }}
-        </span>
-      </div>
-
-      <div v-if="showUserPanel" class="user-panel">
-        <div class="panel-header">
-          <div class="panel-avatar">
-            <UserOutlined />
-          </div>
-          <div class="panel-info">
-            <div class="panel-username">{{ userStore.user.value?.username }}</div>
-            <div class="panel-userid">userId: {{ userStore.user.value?.userId }}</div>
-          </div>
-        </div>
-
-        <div class="panel-section">
-          <div class="section-title">连接 Token</div>
-          <div class="token-box">{{ userStore.token }}</div>
-          <Button
-            size="small"
-            block
-            :type="tokenCopied ? 'primary' : 'default'"
-            @click="copyToken"
-            style="margin-top: 8px; border-radius: 6px"
-          >
-            <template #icon><CopyOutlined /></template>
-            {{ tokenCopied ? '已复制！' : '复制 Token' }}
-          </Button>
-          <div class="token-tip">
-            将此 Token 填入插件 <code>cj.config.json</code> → <code>cloud.token</code>
-          </div>
-        </div>
-
-        <div class="panel-section">
-          <div class="section-header">
-            <span class="section-title">在线机器</span>
-            <span class="refresh-btn" @click="fetchClawStatus">
-              {{ loadingStatus ? '刷新中...' : '刷新' }}
-            </span>
-          </div>
-
-          <div v-if="clawList.length === 0" class="empty-claw">
-            <div>暂无在线插件</div>
-            <div>请启动 openHSD 插件并填入 Token</div>
-          </div>
-
-          <div
-            v-for="claw in clawList"
-            :key="claw.clawId"
-            class="claw-item"
-          >
-            <div class="claw-header">
-              <span class="claw-status-dot"></span>
-              <span class="claw-id">{{ claw.clawId }}</span>
-            </div>
-            <div v-if="claw.openClawDeviceId" class="claw-device">
-              OpenClaw: {{ claw.openClawDeviceId.substring(0, 24) }}...
-            </div>
-            <div class="claw-heartbeat">
-              最后心跳：{{ formatHeartbeat(claw.lastHeartbeat) }}
-            </div>
-          </div>
-        </div>
-
-        <div class="panel-footer">
-          <Button danger block size="small" @click="onLogout" style="border-radius: 6px">
-            退出登录
-          </Button>
-        </div>
-      </div>
-
-      <div v-if="showUserPanel" class="panel-backdrop" @click="showUserPanel = false" />
-    </div>
-  </div>
-</template>
-
 <style scoped>
 .side-nav {
   width: 200px;
@@ -217,7 +196,7 @@ const formatHeartbeat = (ts) => {
 }
 
 .side-nav.collapsed {
-  width: 64px;
+  width: 60px;
 }
 
 .nav-header {
@@ -473,7 +452,7 @@ const formatHeartbeat = (ts) => {
   color: #bbb;
 }
 
-.empty-claw div + div {
+.empty-claw div+div {
   color: #ccc;
   margin-top: 2px;
 }
