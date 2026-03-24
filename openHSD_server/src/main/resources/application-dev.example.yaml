@@ -1,0 +1,17 @@
+# 本地开发：复制本文件为 application-dev.yaml（该文件已被 git 忽略），填入真实密钥。
+# cp application-dev.example.yaml application-dev.yaml
+#
+# 需启用 dev 配置：spring.profiles.active=dev（见主 application.yaml）
+#
+# 百炼语音识别（DashScope）：
+# - 在控制台创建 API Key（sk- 开头），地域需与 dashscope.asr.region 一致：
+#   cn = 中国内地（北京），intl = 国际（新加坡）。
+# - 可只设置环境变量 DASHSCOPE_API_KEY，或在下文 api-key 填写（勿提交仓库）。
+# - 修改后重启 Spring Boot
+
+dashscope:
+  asr:
+    enabled: true
+    api-key: sk-你的百炼APIKey
+    region: cn
+    model: paraformer-realtime-v2

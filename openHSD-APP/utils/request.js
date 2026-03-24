@@ -6,7 +6,7 @@
 
 import { storage } from './storage.js'
 
-const BASE_URL = 'http://192.168.110.129:9081'
+export const BASE_URL = 'http://192.168.110.129:9081'
 
 /**
  * 基础请求

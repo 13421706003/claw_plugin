@@ -255,9 +255,8 @@ public class ClawController {
     // ================================================================
 
     /**
-     * 构造转发给插件的 payload JSON
-     * 附件统一转换为 { type, mimeType, url, name, size } 格式发给插件
-     * 插件再按类型（image/document）转发给 OpenClaw
+     * 构造转发给插件的 payload JSON。
+     * 图片附件优先补充 base64（并保留 url）以兼容仅支持内联图片的链路。
      */
     private JSONObject buildPayload(String messageId, String content,
                                      Map<String, Object> body,
@@ -270,13 +269,14 @@ public class ClawController {
         if (body.containsKey("timeout")) payload.put("timeout", body.get("timeout"));
 
         if (resolvedAttachments != null && !resolvedAttachments.isEmpty()) {
-            // 构造插件协议格式：{ type, mimeType, url, name, size }
+            // 构造插件协议格式：{ type, mimeType, url/base64, name, size }
             List<Map<String, Object>> pluginAttachments = new ArrayList<>();
             for (AttachmentDTO att : resolvedAttachments) {
                 Map<String, Object> pa = new HashMap<>();
                 String mimeType = att.getType() != null ? att.getType() : "application/octet-stream";
                 // 按 MIME 判断大类型
-                if (mimeType.startsWith("image/")) {
+                boolean isImage = mimeType.startsWith("image/");
+                if (isImage) {
                     pa.put("type", "image");
                 } else if (mimeType.startsWith("audio/")) {
                     pa.put("type", "audio");
@@ -288,7 +288,19 @@ public class ClawController {
                 pa.put("mimeType", mimeType);
                 pa.put("url",      att.getUrl());
                 pa.put("name",     att.getName());
+                if (att.getObjectKey() != null) pa.put("objectKey", att.getObjectKey());
                 if (att.getSize() != null) pa.put("size", att.getSize());
+
+                if (isImage && att.getObjectKey() != null && !att.getObjectKey().isBlank()) {
+                    try {
+                        String dataUrl = minioService.objectToDataUrl(att.getObjectKey(), mimeType);
+                        pa.put("base64", dataUrl);
+                    } catch (Exception e) {
+                        // 降级：保留 url 供插件继续尝试拉取
+                        log.warn("[ClawController] 图片转base64失败，回退URL：messageId={}, objectKey={}, err={}",
+                                messageId, att.getObjectKey(), e.getMessage());
+                    }
+                }
                 pluginAttachments.add(pa);
             }
             payload.put("attachments", pluginAttachments);

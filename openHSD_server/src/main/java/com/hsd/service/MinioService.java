@@ -1,6 +1,7 @@
 package com.hsd.service;
 
 import com.hsd.config.MinioProperties;
+import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import lombok.RequiredArgsConstructor;
@@ -8,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.util.Base64;
@@ -129,6 +131,29 @@ public class MinioService {
                 + "/" + objectKey;
         log.debug("[MinIO] 生成公开URL：{}", url);
         return url;
+    }
+
+    /**
+     * 读取 MinIO 对象并转换为 DataURL，便于插件/模型直接消费图片内容。
+     * 例：data:image/png;base64,xxxx
+     */
+    public String objectToDataUrl(String objectKey, String mimeType) throws Exception {
+        String finalMime = (mimeType == null || mimeType.isBlank())
+                ? "application/octet-stream" : mimeType;
+        try (InputStream is = minioClient.getObject(
+                GetObjectArgs.builder()
+                        .bucket(minioProperties.getBucketName())
+                        .object(objectKey)
+                        .build());
+             ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = is.read(buf)) != -1) {
+                baos.write(buf, 0, len);
+            }
+            String b64 = Base64.getEncoder().encodeToString(baos.toByteArray());
+            return "data:" + finalMime + ";base64," + b64;
+        }
     }
 
     /**

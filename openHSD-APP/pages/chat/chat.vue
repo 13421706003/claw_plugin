@@ -249,7 +249,7 @@
 
             <!-- 语音长按按钮（UI占位） -->
             <view v-else class="chat-voice-btn" @tap="onVoiceTap" @longpress="onVoiceLongPress">
-              <text class="chat-voice-btn-text">长按说话</text>
+              <text class="chat-voice-btn-text">长按选音频转写</text>
             </view>
           </view>
 
@@ -311,6 +311,7 @@ import {
   isConnected, connect, disconnect,
   send, selectClaw, clearHistory, loadHistory
 } from '../../api/aiService.js'
+import { transcribeAudioFile } from '../../api/speech.js'
 
 const userStore = useUserStore()
 
@@ -355,7 +356,32 @@ const onVoiceTap = () => {
 }
 
 const onVoiceLongPress = () => {
-  uni.showToast({ title: '语音输入暂未实现', icon: 'none', duration: 1200 })
+  uni.chooseFile({
+    count: 1,
+    type: 'file',
+    extension: ['.mp3', '.wav', '.m4a', '.aac', '.MP3', '.WAV', '.M4A', '.AAC'],
+    success: async (res) => {
+      const paths = res.tempFilePaths || []
+      if (!paths.length) {
+        uni.showToast({ title: '未选择文件', icon: 'none' })
+        return
+      }
+      uni.showLoading({ title: '上传并转写…', mask: true })
+      try {
+        const text = await transcribeAudioFile(paths[0])
+        const t = String(text).slice(0, INPUT_MAX_LEN)
+        inputValue.value = t
+        uni.showToast({ title: '已填入输入框', icon: 'none' })
+      } catch (e) {
+        uni.showToast({ title: e?.message || '转写失败', icon: 'none', duration: 2500 })
+      } finally {
+        uni.hideLoading()
+      }
+    },
+    fail: () => {
+      uni.showToast({ title: '请选择音频文件', icon: 'none' })
+    },
+  })
 }
 
 // 解包 computed ref，确保模板中能正确访问

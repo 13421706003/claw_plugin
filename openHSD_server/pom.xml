@@ -15,8 +15,7 @@
     </parent>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mysql.verison>8.0.30</mysql.verison>
         <lombok.version>1.18.20</lombok.version>
@@ -94,6 +93,20 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>0.11.5</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- 阿里云百炼 DashScope 实时语音识别（文件识别用 Recognition#call） -->
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>dashscope-sdk-java</artifactId>
+            <version>2.22.4</version>
+            <exclusions>
+                <!-- 与 spring-boot-starter-logging（Logback）冲突，会触发 SLF4J multiple providers -->
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-simple</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Test -->

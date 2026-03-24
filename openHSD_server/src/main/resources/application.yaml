@@ -1,7 +1,11 @@
 server:
   port: 9081
 
+# 默认 dev：加载同目录下 application-dev.yaml（需本地自建，见 application-dev.example.yaml）
+# 生产环境请设置环境变量 SPRING_PROFILES_ACTIVE=prod，并通过环境变量或 application-prod 提供密钥
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   servlet:
     multipart:
       enabled: true
@@ -32,4 +36,15 @@ minio:
   secret-key: aiboxminio
   bucket-name: aiworkbox-images
   external-url: https://www.huashidai1.com/oss
+
+# 阿里云百炼语音识别 https://www.alibabacloud.com/help/zh/model-studio/real-time-speech-recognition
+# API Key：application-dev.yaml（已 git 忽略）或环境变量 DASHSCOPE_API_KEY
+dashscope:
+  asr:
+    enabled: false
+    api-key: ${DASHSCOPE_API_KEY:}
+    region: cn
+    model: paraformer-realtime-v2
+    default-format: aac
+    default-sample-rate: 44100
 
