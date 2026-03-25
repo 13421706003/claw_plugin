@@ -37,6 +37,20 @@ minio:
   bucket-name: aiworkbox-images
   external-url: https://www.huashidai1.com/oss
 
+wechat:
+  pay:
+    app-id: ${WECHAT_APP_ID:your-app-id}
+    mch-id: ${WECHAT_MCH_ID:your-mch-id}
+    api-key: ${WECHAT_API_KEY:your-api-key}
+    api-v3-key: ${WECHAT_API_V3_KEY:your-api-v3-key}
+    notify-url: ${WECHAT_NOTIFY_URL:https://your-domain.com/api/recharge/wechat/notify}
+    cert-path: ${WECHAT_CERT_PATH:}
+    mock: ${WECHAT_MOCK:true}
+
+openrouter:
+  management-key: ${OPENROUTER_MANAGEMENT_KEY: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}
+  base-url: https://openrouter.ai/api/v1
+
 # 阿里云百炼语音识别 https://www.alibabacloud.com/help/zh/model-studio/real-time-speech-recognition
 # API Key：application-dev.yaml（已 git 忽略）或环境变量 DASHSCOPE_API_KEY
 dashscope:

@@ -13,7 +13,7 @@
             height="24"
             draggable="false"
           />
-          <span style="font-weight: 600; font-size: 14px">OPENHSD</span>
+          <span style="font-weight: 600; font-size: 14px">汇宝</span>
         </div>
 
         <div :style="layoutStyles.headerRight">

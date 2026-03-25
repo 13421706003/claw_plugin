@@ -4,7 +4,7 @@
       <div class="logo">
         <img src="https://mdn.alipayobjects.com/huamei_iwk9zp/afts/img/A*eco6RrQhxbMAAAAAAAAAAAAADgCCAQ/original"
           alt="logo" width="24" height="24" draggable="false" />
-        <span v-show="!collapsed" class="logo-text">OPENHSD</span>
+        <span v-show="!collapsed" class="logo-text">汇宝</span>
       </div>
       <Tooltip placement="right">
         <div class="collapse-btn" @click="toggleCollapse">
