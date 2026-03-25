@@ -34,7 +34,17 @@ public class RechargeOrder {
     /** 订单状态：0-待支付 1-已支付 2-已分配额度 3-已关闭 */
     private Integer status;
     
-    /** 微信支付订单号（支付成功后由微信返回） */
+    /** 支付渠道：wechat/alipay */
+    private String paymentChannel;
+    
+    /** 支付方式：NATIVE/H5/APP/JSAPI */
+    private String paymentType;
+    
+    /** 渠道订单号（支付成功后由支付渠道返回） */
+    private String channelOrderId;
+    
+    /** 微信支付订单号（支付成功后由微信返回，已废弃，使用channelOrderId） */
+    @Deprecated
     private String wechatOrderId;
     
     /** 支付二维码URL（微信 Native 支付链接） */

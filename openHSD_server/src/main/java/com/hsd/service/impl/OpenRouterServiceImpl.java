@@ -165,6 +165,81 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         }
     }
 
+    @Override
+    public JSONObject createKey(String name, Double limit) throws IOException {
+        String url = openRouterConfig.getBaseUrl() + "/keys";
+        
+        log.info("[OpenRouter] 创建Key请求: url={}, name={}, limit={}", url, name, limit);
+        
+        Map<String, Object> bodyMap = new HashMap<>();
+        bodyMap.put("name", name);
+        if (limit != null) {
+            bodyMap.put("limit", limit);
+        }
+        
+        RequestBody body = RequestBody.create(
+                JSON.toJSONString(bodyMap),
+                MediaType.parse("application/json")
+        );
+
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer " + openRouterConfig.getManagementKey())
+                .addHeader("Content-Type", "application/json")
+                .post(body)
+                .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            String respBody = response.body() != null ? response.body().string() : "";
+            log.info("[OpenRouter] 创建Key响应: code={}, body={}", response.code(), respBody);
+            
+            if (!response.isSuccessful()) {
+                log.error("[OpenRouter] 创建Key失败: code={}, body={}", response.code(), respBody);
+                return null;
+            }
+            return JSON.parseObject(respBody);
+        }
+    }
+
+    @Override
+    public String findKeyHashByLabel(String label) throws IOException {
+        if (label == null || !label.contains("...")) {
+            log.error("[OpenRouter] label格式无效: {}", label);
+            return null;
+        }
+        
+        String prefix = label.substring(0, label.indexOf("..."));
+        String suffix = label.substring(label.indexOf("...") + 3);
+        
+        log.info("[OpenRouter] 查找Key Hash: label={}, prefix={}, suffix={}", label, prefix, suffix);
+        
+        JSONObject keysResult = listKeys();
+        if (keysResult == null) {
+            log.error("[OpenRouter] 获取Key列表失败");
+            return null;
+        }
+        
+        com.alibaba.fastjson2.JSONArray dataArray = keysResult.getJSONArray("data");
+        if (dataArray == null) {
+            log.error("[OpenRouter] Key列表为空");
+            return null;
+        }
+        
+        for (int i = 0; i < dataArray.size(); i++) {
+            com.alibaba.fastjson2.JSONObject keyInfo = dataArray.getJSONObject(i);
+            String keyLabel = keyInfo.getString("label");
+            String keyHash = keyInfo.getString("hash");
+            
+            if (keyLabel != null && keyLabel.startsWith(prefix) && keyLabel.endsWith(suffix)) {
+                log.info("[OpenRouter] 找到匹配的Key: label={}, hash={}", keyLabel, keyHash);
+                return keyHash;
+            }
+        }
+        
+        log.error("[OpenRouter] 未找到匹配的Key: label={}", label);
+        return null;
+    }
+
     private String extractKeyHashFromLabel(String label) {
         if (label == null || !label.startsWith("sk-or-")) {
             return null;

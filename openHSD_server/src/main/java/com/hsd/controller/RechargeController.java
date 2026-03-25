@@ -1,9 +1,12 @@
 package com.hsd.controller;
 
-import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
+import com.hsd.service.OpenRouterService;
+import com.hsd.service.PaymentService;
 import com.hsd.service.RechargeService;
-import com.hsd.service.WechatPayService;
+import com.hsd.service.dto.PaymentResult;
+import com.hsd.service.enums.PayType;
+import com.hsd.service.enums.PaymentChannel;
 import com.hsd.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -11,21 +14,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.BufferedReader;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 充值功能控制器
- * 
- * 提供充值相关的 RESTful API 接口，包括：
- * - API Key 绑定与查询
- * - 创建充值订单
- * - 查询订单状态
- * - 充值历史记录
- * - 微信支付回调
- */
 @Slf4j
 @RestController
 @RequestMapping("/api/recharge")
@@ -34,8 +26,9 @@ import java.util.Map;
 public class RechargeController {
 
     private final RechargeService rechargeService;
-    private final WechatPayService wechatPayService;
+    private final Map<String, PaymentService> paymentServices;
     private final JwtUtil jwtUtil;
+    private final OpenRouterService openRouterService;
 
     /**
      * 获取用户绑定的 API Key 信息
@@ -113,16 +106,6 @@ public class RechargeController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * 创建充值订单
-     * 
-     * 用户发起充值请求，创建微信 Native 支付订单，
-     * 返回支付二维码链接供前端展示。
-     * 
-     * @param authHeader Authorization 请求头（Bearer Token）
-     * @param body 请求体，包含 amountUsd 字段（充值金额，美元）
-     * @return 订单创建结果，包含订单号和二维码链接
-     */
     @PostMapping("/create")
     public ResponseEntity<Map<String, Object>> createOrder(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
@@ -154,8 +137,18 @@ public class RechargeController {
             return ResponseEntity.badRequest().body(result);
         }
 
-        Map<String, Object> result = rechargeService.createOrder(userId, amountUsd);
-        result.put("mockMode", wechatPayService.isMockMode());
+        String channelStr = (String) body.getOrDefault("paymentChannel", "wechat");
+        String typeStr = (String) body.getOrDefault("paymentType", "NATIVE");
+        
+        PaymentChannel channel = PaymentChannel.fromCode(channelStr);
+        PayType payType;
+        try {
+            payType = PayType.valueOf(typeStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            payType = PayType.NATIVE;
+        }
+
+        Map<String, Object> result = rechargeService.createOrder(userId, amountUsd, channel, payType);
         return ResponseEntity.ok(result);
     }
 
@@ -213,37 +206,14 @@ public class RechargeController {
         return ResponseEntity.ok(result);
     }
 
-    /**
-     * 微信支付回调接口
-     * 
-     * 接收微信支付服务器的支付结果通知，
-     * 验证签名后处理支付成功逻辑（分配额度）。
-     * 
-     * 注意：此接口必须公网可访问，且支持 HTTPS。
-     * 
-     * @param request HTTP 请求对象
-     * @return 处理结果响应（微信要求返回特定格式）
-     */
     @PostMapping("/wechat/notify")
     public ResponseEntity<Map<String, String>> wechatNotify(HttpServletRequest request) {
         log.info("[RechargeController] 收到微信支付通知");
         
+        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        
         try {
-            String timestamp = request.getHeader("Wechatpay-Timestamp");
-            String nonce = request.getHeader("Wechatpay-Nonce");
-            String signature = request.getHeader("Wechatpay-Signature");
-            
-            StringBuilder sb = new StringBuilder();
-            BufferedReader reader = request.getReader();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line);
-            }
-            String body = sb.toString();
-
-            log.info("[RechargeController] 微信支付通知 body: {}", body);
-
-            if (!wechatPayService.verifyNotify(timestamp, nonce, body, signature)) {
+            if (!wechatPayService.verifyNotify(request)) {
                 log.error("[RechargeController] 微信支付通知验签失败");
                 Map<String, String> result = new HashMap<>();
                 result.put("code", "FAIL");
@@ -251,7 +221,7 @@ public class RechargeController {
                 return ResponseEntity.status(401).body(result);
             }
 
-            JSONObject notifyData = wechatPayService.parseNotifyBody(body);
+            PaymentResult notifyData = wechatPayService.parseNotify(request);
             if (notifyData == null) {
                 log.error("[RechargeController] 解析通知数据失败");
                 Map<String, String> result = new HashMap<>();
@@ -260,20 +230,21 @@ public class RechargeController {
                 return ResponseEntity.badRequest().body(result);
             }
 
-            String eventType = notifyData.getString("event_type");
-            if (!"TRANSACTION.SUCCESS".equals(eventType)) {
-                log.info("[RechargeController] 非成功事件: {}", eventType);
+            if (!"TRANSACTION.SUCCESS".equals(notifyData.getEventType())) {
+                log.info("[RechargeController] 非成功事件: {}", notifyData.getEventType());
                 return ResponseEntity.ok(wechatPayService.buildSuccessResponse());
             }
 
-            JSONObject resource = notifyData.getJSONObject("resource");
-            String orderNo = resource.getString("out_trade_no");
-            String wechatOrderId = resource.getString("transaction_id");
-            String paidAt = resource.getString("success_time");
+            String orderNo = notifyData.getOrderNo();
+            String channelOrderId = notifyData.getChannelOrderId();
+            String paidAt = notifyData.getPaidAt();
 
-            log.info("[RechargeController] 支付成功: orderNo={}, wechatOrderId={}", orderNo, wechatOrderId);
+            log.info("[RechargeController] 支付成功: orderNo={}, channelOrderId={}", orderNo, channelOrderId);
             
-            rechargeService.handlePaySuccess(orderNo, wechatOrderId, paidAt);
+            boolean allocated = rechargeService.handlePaySuccess(orderNo, channelOrderId, paidAt);
+            if (!allocated) {
+                log.error("[RechargeController] 额度分配失败，需人工处理: orderNo={}", orderNo);
+            }
 
             return ResponseEntity.ok(wechatPayService.buildSuccessResponse());
             
@@ -286,16 +257,52 @@ public class RechargeController {
         }
     }
 
-    /**
-     * 模拟支付成功接口
-     * 
-     * 仅在模拟模式下可用，用于开发测试阶段手动触发支付成功流程。
-     * 生产环境调用此接口将返回 403 错误。
-     * 
-     * @param authHeader Authorization 请求头（Bearer Token）
-     * @param orderNo 商户订单号
-     * @return 处理结果响应
-     */
+    @PostMapping("/alipay/notify")
+    public ResponseEntity<Map<String, String>> alipayNotify(HttpServletRequest request) {
+        log.info("[RechargeController] 收到支付宝支付通知");
+        
+        PaymentService alipayService = paymentServices.get("alipayService");
+        
+        try {
+            if (!alipayService.verifyNotify(request)) {
+                log.error("[RechargeController] 支付宝支付通知验签失败");
+                Map<String, String> result = new HashMap<>();
+                result.put("code", "FAIL");
+                result.put("message", "验签失败");
+                return ResponseEntity.status(401).body(result);
+            }
+
+            PaymentResult notifyData = alipayService.parseNotify(request);
+            if (notifyData == null) {
+                log.error("[RechargeController] 解析通知数据失败");
+                Map<String, String> result = new HashMap<>();
+                result.put("code", "FAIL");
+                result.put("message", "解析失败");
+                return ResponseEntity.badRequest().body(result);
+            }
+
+            String orderNo = notifyData.getOrderNo();
+            String channelOrderId = notifyData.getChannelOrderId();
+            String paidAt = notifyData.getPaidAt();
+
+            log.info("[RechargeController] 支付宝支付成功: orderNo={}, channelOrderId={}", orderNo, channelOrderId);
+            
+            boolean allocated = rechargeService.handlePaySuccess(orderNo, channelOrderId, paidAt);
+            if (!allocated) {
+                log.error("[RechargeController] 额度分配失败，需人工处理: orderNo={}", orderNo);
+            }
+
+            return ResponseEntity.ok(alipayService.buildSuccessResponse());
+            
+        } catch (Exception e) {
+            log.error("[RechargeController] 处理支付宝支付通知失败", e);
+            Map<String, String> result = new HashMap<>();
+            result.put("code", "FAIL");
+            result.put("message", "处理失败");
+            return ResponseEntity.status(500).body(result);
+        }
+    }
+
     @PostMapping("/mock/pay/{orderNo}")
     public ResponseEntity<Map<String, Object>> mockPaySuccess(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
@@ -309,6 +316,7 @@ public class RechargeController {
             return ResponseEntity.status(401).body(result);
         }
 
+        PaymentService wechatPayService = paymentServices.get("wechatPayService");
         if (!wechatPayService.isMockMode()) {
             Map<String, Object> result = new HashMap<>();
             result.put("success", false);
@@ -341,5 +349,108 @@ public class RechargeController {
             log.error("[RechargeController] 解析token失败", e);
             return null;
         }
+    }
+
+    @PostMapping("/test/create-key")
+    public ResponseEntity<Map<String, Object>> testCreateKey(
+            @RequestParam String name,
+            @RequestParam(required = false) Double limit) {
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        if (!wechatPayService.isMockMode()) {
+            result.put("success", false);
+            result.put("message", "非模拟模式，禁止访问");
+            return ResponseEntity.status(403).body(result);
+        }
+        
+        try {
+            log.info("[RechargeController] 测试创建Key: name={}, limit={}", name, limit);
+            JSONObject createResult = openRouterService.createKey(name, limit);
+            
+            if (createResult != null) {
+                result.put("success", true);
+                result.put("data", createResult);
+            } else {
+                result.put("success", false);
+                result.put("message", "创建Key失败");
+            }
+        } catch (Exception e) {
+            log.error("[RechargeController] 测试创建Key失败", e);
+            result.put("success", false);
+            result.put("message", "创建Key异常: " + e.getMessage());
+        }
+        
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/test/list-keys")
+    public ResponseEntity<Map<String, Object>> testListKeys() {
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        if (!wechatPayService.isMockMode()) {
+            result.put("success", false);
+            result.put("message", "非模拟模式，禁止访问");
+            return ResponseEntity.status(403).body(result);
+        }
+        
+        try {
+            log.info("[RechargeController] 测试列出Keys");
+            JSONObject listResult = openRouterService.listKeys();
+            
+            if (listResult != null) {
+                result.put("success", true);
+                result.put("data", listResult);
+            } else {
+                result.put("success", false);
+                result.put("message", "获取Key列表失败");
+            }
+        } catch (Exception e) {
+            log.error("[RechargeController] 测试列出Keys失败", e);
+            result.put("success", false);
+            result.put("message", "获取Key列表异常: " + e.getMessage());
+        }
+        
+        return ResponseEntity.ok(result);
+    }
+
+    @PatchMapping("/test/update-limit")
+    public ResponseEntity<Map<String, Object>> testUpdateLimit(
+            @RequestParam String keyHash,
+            @RequestParam Double limit) {
+        
+        Map<String, Object> result = new HashMap<>();
+        
+        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        if (!wechatPayService.isMockMode()) {
+            result.put("success", false);
+            result.put("message", "非模拟模式，禁止访问");
+            return ResponseEntity.status(403).body(result);
+        }
+        
+        try {
+            log.info("[RechargeController] 测试更新额度: keyHash={}, limit={}", keyHash, limit);
+            
+            boolean success = openRouterService.updateKeyLimit(keyHash, limit);
+            
+            if (success) {
+                result.put("success", true);
+                result.put("message", "额度更新成功");
+                result.put("keyHash", keyHash);
+                result.put("newLimit", limit);
+            } else {
+                result.put("success", false);
+                result.put("message", "额度更新失败");
+            }
+        } catch (Exception e) {
+            log.error("[RechargeController] 测试更新额度失败", e);
+            result.put("success", false);
+            result.put("message", "更新额度异常: " + e.getMessage());
+        }
+        
+        return ResponseEntity.ok(result);
     }
 }

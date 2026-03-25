@@ -27,4 +27,7 @@ public class User {
     
     /** API Key 脱敏标签（用于前端显示） */
     private String openrouterKeyLabel;
+    
+    /** OpenRouter Key Hash（用于Management API更新额度） */
+    private String openrouterKeyHash;
 }

@@ -19,8 +19,8 @@ public interface RechargeOrderMapper {
      * @param order 充值订单实体
      * @return 影响行数，同时会回填自增主键到 order.id
      */
-    @Insert("INSERT INTO recharge_order (order_no, user_id, amount_cny, amount_usd, exchange_rate, status, qrcode_url, created_at) " +
-            "VALUES (#{orderNo}, #{userId}, #{amountCny}, #{amountUsd}, #{exchangeRate}, #{status}, #{qrcodeUrl}, NOW())")
+    @Insert("INSERT INTO recharge_order (order_no, user_id, amount_cny, amount_usd, exchange_rate, status, qrcode_url, payment_channel, payment_type, created_at) " +
+            "VALUES (#{orderNo}, #{userId}, #{amountCny}, #{amountUsd}, #{exchangeRate}, #{status}, #{qrcodeUrl}, #{paymentChannel}, #{paymentType}, NOW())")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insert(RechargeOrder order);
 
@@ -61,9 +61,9 @@ public interface RechargeOrderMapper {
      * @param paidAt 支付完成时间
      * @return 影响行数
      */
-    @Update("UPDATE recharge_order SET status = #{status}, wechat_order_id = #{wechatOrderId}, paid_at = #{paidAt}, updated_at = NOW() WHERE order_no = #{orderNo}")
+    @Update("UPDATE recharge_order SET status = #{status}, channel_order_id = #{channelOrderId}, paid_at = #{paidAt}, updated_at = NOW() WHERE order_no = #{orderNo}")
     int updatePayStatus(@Param("orderNo") String orderNo, @Param("status") Integer status, 
-                        @Param("wechatOrderId") String wechatOrderId, @Param("paidAt") String paidAt);
+                        @Param("channelOrderId") String channelOrderId, @Param("paidAt") String paidAt);
 
     /**
      * 更新订单状态（通用方法）

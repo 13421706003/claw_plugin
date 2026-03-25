@@ -110,6 +110,7 @@ import {
   UserOutlined,
   CopyOutlined,
   SyncOutlined,
+  BugOutlined,
 } from '@ant-design/icons-vue'
 import { Button, Tooltip, theme } from 'ant-design-vue'
 import { useUserStore } from '../stores/user.js'
@@ -130,6 +131,7 @@ const navItems = [
   { key: '/chat', icon: MessageOutlined, label: '聊天' },
   { key: '/config', icon: SettingOutlined, label: '配置' },
   { key: '/recharge', icon: PayCircleOutlined, label: '充值' },
+  { key: '/test', icon: BugOutlined, label: '测试' },
 ]
 
 const activeKey = computed(() => route.path)

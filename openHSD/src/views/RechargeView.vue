@@ -309,6 +309,7 @@ const startPayPolling = () => {
         clearInterval(payTimer)
         payStatus.value = res.status
         message.success('充值成功！')
+        await new Promise(resolve => setTimeout(resolve, 500))
         await loadKeyInfo()
         await loadOrderHistory()
         setTimeout(() => {
@@ -339,6 +340,7 @@ const handleMockPay = async () => {
     if (res.success) {
       payStatus.value = 2
       message.success('模拟支付成功！额度已到账')
+      await new Promise(resolve => setTimeout(resolve, 500))
       await loadKeyInfo()
       await loadOrderHistory()
       setTimeout(() => {

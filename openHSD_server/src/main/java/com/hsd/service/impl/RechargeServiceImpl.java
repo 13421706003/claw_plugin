@@ -6,8 +6,10 @@ import com.hsd.entity.User;
 import com.hsd.mapper.RechargeOrderMapper;
 import com.hsd.mapper.UserMapper;
 import com.hsd.service.OpenRouterService;
+import com.hsd.service.PaymentService;
 import com.hsd.service.RechargeService;
-import com.hsd.service.WechatPayService;
+import com.hsd.service.enums.PayType;
+import com.hsd.service.enums.PaymentChannel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,7 +36,7 @@ public class RechargeServiceImpl implements RechargeService {
 
     private final RechargeOrderMapper rechargeOrderMapper;
     private final UserMapper userMapper;
-    private final WechatPayService wechatPayService;
+    private final Map<String, PaymentService> paymentServices;
     private final OpenRouterService openRouterService;
 
     /** 美元兑人民币汇率（固定 8.0） */
@@ -116,12 +118,30 @@ public class RechargeServiceImpl implements RechargeService {
                 return result;
             }
 
+            String label = keyInfo.getString("label");
+            if (label == null) {
+                result.put("success", false);
+                result.put("message", "无法获取Key标签信息");
+                return result;
+            }
+            
+            String keyHash = openRouterService.findKeyHashByLabel(label);
+            if (keyHash == null) {
+                result.put("success", false);
+                result.put("message", "未找到对应的Key Hash，请确保使用通过系统创建的子Key");
+                return result;
+            }
+            
             String maskedLabel = maskApiKey(apiKey);
             userMapper.updateOpenRouterKey(userId, apiKey, maskedLabel);
+            userMapper.updateKeyHash(userId, keyHash);
+            
+            log.info("[RechargeService] 绑定Key成功: userId={}, keyLabel={}, keyHash={}", userId, label, keyHash);
 
             result.put("success", true);
             result.put("message", "绑定成功");
             result.put("keyLabel", maskedLabel);
+            result.put("keyHash", keyHash);
         } catch (Exception e) {
             log.error("[RechargeService] 绑定Key失败", e);
             result.put("success", false);
@@ -141,6 +161,12 @@ public class RechargeServiceImpl implements RechargeService {
     @Override
     @Transactional
     public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd) {
+        return createOrder(userId, amountUsd, PaymentChannel.WECHAT, PayType.NATIVE);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd, PaymentChannel channel, PayType payType) {
         Map<String, Object> result = new HashMap<>();
         
         User user = userMapper.findById(userId);
@@ -162,6 +188,13 @@ public class RechargeServiceImpl implements RechargeService {
             return result;
         }
 
+        PaymentService paymentService = paymentServices.get(channel.getCode() + "PayService");
+        if (paymentService == null) {
+            result.put("success", false);
+            result.put("message", "不支持的支付渠道: " + channel.getCode());
+            return result;
+        }
+
         BigDecimal amountCny = amountUsd.multiply(EXCHANGE_RATE).setScale(2, RoundingMode.HALF_UP);
         int amountCents = amountCny.multiply(new BigDecimal("100")).intValue();
 
@@ -174,9 +207,11 @@ public class RechargeServiceImpl implements RechargeService {
         order.setAmountUsd(amountUsd);
         order.setExchangeRate(EXCHANGE_RATE);
         order.setStatus(RechargeOrder.STATUS_PENDING);
+        order.setPaymentChannel(channel.getCode());
+        order.setPaymentType(payType.name());
 
         try {
-            String codeUrl = wechatPayService.createNativeOrder(orderNo, amountCents, "OpenRouter充值-" + amountUsd + "USD");
+            String codeUrl = paymentService.createOrder(orderNo, amountCents, "OpenRouter充值-" + amountUsd + "USD", payType);
             order.setQrcodeUrl(codeUrl);
             rechargeOrderMapper.insert(order);
 
@@ -185,6 +220,9 @@ public class RechargeServiceImpl implements RechargeService {
             result.put("qrcodeUrl", codeUrl);
             result.put("amountCny", amountCny);
             result.put("amountUsd", amountUsd);
+            result.put("paymentChannel", channel.getCode());
+            result.put("paymentType", payType.name());
+            result.put("mockMode", paymentService.isMockMode());
         } catch (Exception e) {
             log.error("[RechargeService] 创建订单失败", e);
             result.put("success", false);
@@ -230,48 +268,45 @@ public class RechargeServiceImpl implements RechargeService {
 
     @Override
     @Transactional
-    public void handlePaySuccess(String orderNo, String wechatOrderId, String paidAtStr) {
+    public boolean handlePaySuccess(String orderNo, String channelOrderId, String paidAtStr) {
         RechargeOrder order = rechargeOrderMapper.findByOrderNo(orderNo);
         if (order == null) {
             log.error("[RechargeService] 订单不存在: {}", orderNo);
-            return;
+            return false;
         }
 
         if (order.getStatus() != RechargeOrder.STATUS_PENDING) {
             log.warn("[RechargeService] 订单状态不正确: orderNo={}, status={}", orderNo, order.getStatus());
-            return;
+            return false;
         }
 
-        rechargeOrderMapper.updatePayStatus(orderNo, RechargeOrder.STATUS_PAID, wechatOrderId, paidAtStr);
+        rechargeOrderMapper.updatePayStatus(orderNo, RechargeOrder.STATUS_PAID, channelOrderId, paidAtStr);
 
         User user = userMapper.findById(order.getUserId());
-        if (user == null || user.getOpenrouterKey() == null) {
-            log.error("[RechargeService] 用户或Key不存在: userId={}", order.getUserId());
-            return;
+        if (user == null) {
+            log.error("[RechargeService] 用户不存在: userId={}", order.getUserId());
+            return false;
+        }
+        
+        String keyHash = user.getOpenrouterKeyHash();
+        String openrouterKey = user.getOpenrouterKey();
+        
+        if (keyHash == null || keyHash.isEmpty()) {
+            log.error("[RechargeService] 用户未绑定Key Hash: userId={}", order.getUserId());
+            return false;
         }
 
         try {
-            String openrouterKey = user.getOpenrouterKey();
-            log.info("[RechargeService] 开始处理支付成功: orderNo={}, keyPrefix={}", orderNo, 
-                     openrouterKey.substring(0, Math.min(15, openrouterKey.length())) + "...");
+            log.info("[RechargeService] 开始处理支付成功: orderNo={}, keyHash={}", orderNo, keyHash);
             
             JSONObject currentKeyInfo = openRouterService.getCurrentKeyInfo(openrouterKey);
             
             if (currentKeyInfo == null) {
                 log.error("[RechargeService] 获取Key信息失败: orderNo={}", orderNo);
-                return;
+                return false;
             }
             
             log.info("[RechargeService] Key信息返回: {}", currentKeyInfo.toJSONString());
-            
-            String label = currentKeyInfo.getString("label");
-            if (label == null || !label.startsWith("sk-or-")) {
-                log.error("[RechargeService] label字段无效: label={}", label);
-                return;
-            }
-            
-            String keyHash = label.substring(6);
-            log.info("[RechargeService] 提取keyHash: {}", keyHash);
             
             BigDecimal currentLimit = BigDecimal.ZERO;
             if (currentKeyInfo.getBigDecimal("limit") != null) {
@@ -287,11 +322,14 @@ public class RechargeServiceImpl implements RechargeService {
             if (success) {
                 rechargeOrderMapper.updateStatus(orderNo, RechargeOrder.STATUS_ALLOCATED);
                 log.info("[RechargeService] 充值成功: orderNo={}, newLimit={}", orderNo, newLimit);
+                return true;
             } else {
                 log.error("[RechargeService] 更新额度失败: orderNo={}", orderNo);
+                return false;
             }
         } catch (Exception e) {
             log.error("[RechargeService] 处理支付成功失败", e);
+            return false;
         }
     }
 
@@ -326,16 +364,17 @@ public class RechargeServiceImpl implements RechargeService {
     public Map<String, Object> mockPaySuccess(String orderNo) {
         Map<String, Object> result = new HashMap<>();
         
-        if (!wechatPayService.isMockMode()) {
-            result.put("success", false);
-            result.put("message", "非模拟模式，无法使用模拟支付");
-            return result;
-        }
-        
         RechargeOrder order = rechargeOrderMapper.findByOrderNo(orderNo);
         if (order == null) {
             result.put("success", false);
             result.put("message", "订单不存在");
+            return result;
+        }
+        
+        PaymentService paymentService = paymentServices.get(order.getPaymentChannel() + "PayService");
+        if (paymentService == null || !paymentService.isMockMode()) {
+            result.put("success", false);
+            result.put("message", "非模拟模式，无法使用模拟支付");
             return result;
         }
         
@@ -345,15 +384,22 @@ public class RechargeServiceImpl implements RechargeService {
             return result;
         }
         
-        String mockWechatOrderId = "MOCK_" + System.currentTimeMillis();
+        String mockChannelOrderId = "MOCK_" + System.currentTimeMillis();
         String mockPaidAt = java.time.LocalDateTime.now().toString();
         
-        handlePaySuccess(orderNo, mockWechatOrderId, mockPaidAt);
+        boolean success = handlePaySuccess(orderNo, mockChannelOrderId, mockPaidAt);
         
-        result.put("success", true);
-        result.put("message", "模拟支付成功");
-        result.put("orderNo", orderNo);
-        result.put("wechatOrderId", mockWechatOrderId);
+        if (success) {
+            result.put("success", true);
+            result.put("message", "模拟支付成功，额度已分配");
+            result.put("orderNo", orderNo);
+            result.put("channelOrderId", mockChannelOrderId);
+        } else {
+            result.put("success", false);
+            result.put("message", "支付已记录，但额度分配失败，请联系客服处理");
+            result.put("orderNo", orderNo);
+            result.put("channelOrderId", mockChannelOrderId);
+        }
         
         return result;
     }

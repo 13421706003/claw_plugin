@@ -18,7 +18,7 @@ public interface UserMapper {
      * @param username 用户名
      * @return 用户实体，不存在则返回 null
      */
-    @Select("SELECT id, username, password_hash, created_at, openrouter_key, openrouter_key_label FROM users WHERE username = #{username} LIMIT 1")
+    @Select("SELECT id, username, password_hash, created_at, openrouter_key, openrouter_key_label, openrouter_key_hash FROM users WHERE username = #{username} LIMIT 1")
     User findByUsername(String username);
 
     /**
@@ -27,7 +27,7 @@ public interface UserMapper {
      * @param id 用户ID
      * @return 用户实体，不存在则返回 null
      */
-    @Select("SELECT id, username, password_hash, created_at, openrouter_key, openrouter_key_label FROM users WHERE id = #{id} LIMIT 1")
+    @Select("SELECT id, username, password_hash, created_at, openrouter_key, openrouter_key_label, openrouter_key_hash FROM users WHERE id = #{id} LIMIT 1")
     User findById(Long id);
 
     /**
@@ -50,4 +50,14 @@ public interface UserMapper {
      */
     @Update("UPDATE users SET openrouter_key = #{openrouterKey}, openrouter_key_label = #{keyLabel} WHERE id = #{userId}")
     int updateOpenRouterKey(@Param("userId") Long userId, @Param("openrouterKey") String openrouterKey, @Param("keyLabel") String keyLabel);
+
+    /**
+     * 更新用户的 OpenRouter Key Hash
+     * 
+     * @param userId 用户ID
+     * @param keyHash Key的Hash值
+     * @return 影响行数
+     */
+    @Update("UPDATE users SET openrouter_key_hash = #{keyHash} WHERE id = #{userId}")
+    int updateKeyHash(@Param("userId") Long userId, @Param("keyHash") String keyHash);
 }

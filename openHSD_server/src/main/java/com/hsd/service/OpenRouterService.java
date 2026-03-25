@@ -83,4 +83,29 @@ public interface OpenRouterService {
      * @throws IOException 网络请求异常
      */
     JSONObject listKeys() throws IOException;
+
+    /**
+     * 创建新的 API Key
+     * 
+     * 通过 Management API 创建新的子 API Key。
+     * 创建成功后，返回的 key 字段包含完整的 API Key 字符串（仅显示一次）。
+     * 
+     * @param name Key 名称
+     * @param limit 消费限额（美元），可选
+     * @return 创建结果 JSON 对象，包含 data 和 key 字段，失败返回 null
+     * @throws IOException 网络请求异常
+     */
+    JSONObject createKey(String name, Double limit) throws IOException;
+
+    /**
+     * 通过掩码label在Key列表中匹配查找hash
+     * 
+     * 用户绑定时，通过getCurrentKeyInfo获取掩码label（如"sk-or-v1-eb5...490"），
+     * 然后调用listKeys获取所有Key，通过掩码匹配找到对应的完整hash。
+     * 
+     * @param label 掩码label（如"sk-or-v1-eb5...490"）
+     * @return 匹配到的Key Hash，未找到返回 null
+     * @throws IOException 网络请求异常
+     */
+    String findKeyHashByLabel(String label) throws IOException;
 }
