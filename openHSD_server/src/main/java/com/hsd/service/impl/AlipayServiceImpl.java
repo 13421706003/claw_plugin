@@ -5,9 +5,7 @@ import com.alipay.api.AlipayClient;
 import com.alipay.api.DefaultAlipayClient;
 import com.alipay.api.AlipayApiException;
 import com.alipay.api.internal.util.AlipaySignature;
-import com.alipay.api.request.AlipayTradePrecreateRequest;
 import com.alipay.api.request.AlipayTradeWapPayRequest;
-import com.alipay.api.response.AlipayTradePrecreateResponse;
 import com.hsd.config.AlipayConfig;
 import com.hsd.service.AlipayService;
 import com.hsd.dto.PaymentResult;
@@ -55,22 +53,57 @@ public class AlipayServiceImpl implements AlipayService {
             return "mock://alipay/" + orderNo;
         }
 
-        if (type == PayType.JSAPI) {
-            throw new UnsupportedOperationException("暂不支持支付宝 JSAPI 支付方式");
-        }
-        if (type == PayType.APP) {
-            throw new UnsupportedOperationException("暂不支持支付宝 APP 支付方式");
+        // 目前 openHSD_server 充值只走 NATIVE，因此这里统一使用 QUICK_WAP_PAY。
+        // 如果后续需要更细分（扫码/JSAPI/App 等），可再扩展为不同的 AlipayRequest 类型。
+        switch (type) {
+            case NATIVE:
+            case H5:
+            case APP:
+                break;
+            case JSAPI:
+                // JSAPI 需要额外的 openid 等参数，当前模型暂不支持。
+                throw new UnsupportedOperationException("暂不支持支付宝 JSAPI 支付方式");
+            default:
+                break;
         }
 
         String amountCny = new BigDecimal(amountCents)
                 .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP)
                 .toPlainString();
 
-        AlipayClient alipayClient = buildClient();
-        if (type == PayType.NATIVE) {
-            return createNativeOrder(alipayClient, orderNo, amountCny, description);
+        // 1、创建支付宝客户端
+        AlipayClient alipayClient = new DefaultAlipayClient(
+                alipayConfig.getServerUrl(),
+                alipayConfig.getAppId(),
+                alipayConfig.getPrivateKey(),
+                "json",
+                alipayConfig.getCharset(),
+                alipayConfig.getAlipayPublicKey(),
+                alipayConfig.getSignType()
+        );
+
+        // 2、创建支付请求（WAP 支付会返回一个可直接在页面提交的 form/HTML）
+        AlipayTradeWapPayRequest alipayRequest = new AlipayTradeWapPayRequest();
+        alipayRequest.setNotifyUrl(alipayConfig.getNotifyUrl());
+        alipayRequest.setReturnUrl(alipayConfig.getReturnUrl());
+
+        JSONObject bizContent = new JSONObject();
+        bizContent.put("out_trade_no", orderNo);        // 我们自己生成的订单编号
+        bizContent.put("total_amount", amountCny);    // 订单的总金额（单位：元，保留两位小数）
+        bizContent.put("subject", description);       // 支付名称
+        bizContent.put("product_code", "QUICK_WAP_PAY");
+        bizContent.put("timeout_express", alipayConfig.getTimeout());
+
+        alipayRequest.setBizContent(bizContent.toString());
+
+        try {
+            log.info("[Alipay] 创建支付宝订单: out_trade_no={}, total_amount={}, subject={}",
+                    orderNo, amountCny, description);
+            return alipayClient.pageExecute(alipayRequest).getBody();
+        } catch (AlipayApiException e) {
+            log.error("[Alipay] 创建订单失败", e);
+            throw e;
         }
-        return createWapOrder(alipayClient, orderNo, amountCny, description);
     }
 
     /**
@@ -173,22 +206,6 @@ public class AlipayServiceImpl implements AlipayService {
     }
 
     private PaymentResult buildPaymentResult(Map<String, String> params, boolean isMock) {
-        if (!isMock) {
-            String appId = params.get("app_id");
-            if (appId == null || !appId.equals(alipayConfig.getAppId())) {
-                log.error("[Alipay] 回调 app_id 不匹配, app_id={}, expected={}", appId, alipayConfig.getAppId());
-                return null;
-            }
-            String sellerId = alipayConfig.getSellerId();
-            if (sellerId != null && !sellerId.isBlank()) {
-                String notifySellerId = params.get("seller_id");
-                if (!sellerId.equals(notifySellerId)) {
-                    log.error("[Alipay] 回调 seller_id 不匹配, seller_id={}, expected={}", notifySellerId, sellerId);
-                    return null;
-                }
-            }
-        }
-
         String outTradeNo = params.get("out_trade_no");
         String tradeNo = params.get("trade_no"); // 支付宝交易号
         String tradeStatus = params.get("trade_status");
@@ -216,62 +233,5 @@ public class AlipayServiceImpl implements AlipayService {
         }
 
         return result;
-    }
-
-    private AlipayClient buildClient() {
-        String privateKey = alipayConfig.getPrivateKey();
-        if (privateKey == null || privateKey.isBlank()) {
-            throw new IllegalStateException("支付宝私钥未配置（privateKey 或 merchantPrivateKey）");
-        }
-        return new DefaultAlipayClient(
-                alipayConfig.getServerUrl(),
-                alipayConfig.getAppId(),
-                privateKey,
-                "json",
-                alipayConfig.getCharset(),
-                alipayConfig.getAlipayPublicKey(),
-                alipayConfig.getSignType()
-        );
-    }
-
-    private String createNativeOrder(AlipayClient client, String orderNo, String amountCny, String description)
-            throws AlipayApiException {
-        AlipayTradePrecreateRequest request = new AlipayTradePrecreateRequest();
-        request.setNotifyUrl(alipayConfig.getNotifyUrl());
-
-        JSONObject bizContent = new JSONObject();
-        bizContent.put("out_trade_no", orderNo);
-        bizContent.put("total_amount", amountCny);
-        bizContent.put("subject", description);
-        bizContent.put("timeout_express", alipayConfig.getTimeout());
-        bizContent.put("product_code", "FACE_TO_FACE_PAYMENT");
-        request.setBizContent(bizContent.toString());
-
-        AlipayTradePrecreateResponse response = client.execute(request);
-        if (response == null || !response.isSuccess() || response.getQrCode() == null || response.getQrCode().isBlank()) {
-            String subMsg = response == null ? "response is null"
-                    : (response.getSubMsg() == null ? response.getMsg() : response.getSubMsg());
-            throw new AlipayApiException("支付宝预下单失败: " + subMsg);
-        }
-        log.info("[Alipay] 预下单成功: out_trade_no={}, qr_code={}", orderNo, response.getQrCode());
-        return response.getQrCode();
-    }
-
-    private String createWapOrder(AlipayClient client, String orderNo, String amountCny, String description)
-            throws AlipayApiException {
-        AlipayTradeWapPayRequest request = new AlipayTradeWapPayRequest();
-        request.setNotifyUrl(alipayConfig.getNotifyUrl());
-        request.setReturnUrl(alipayConfig.getReturnUrl());
-
-        JSONObject bizContent = new JSONObject();
-        bizContent.put("out_trade_no", orderNo);
-        bizContent.put("total_amount", amountCny);
-        bizContent.put("subject", description);
-        bizContent.put("product_code", "QUICK_WAP_PAY");
-        bizContent.put("timeout_express", alipayConfig.getTimeout());
-        request.setBizContent(bizContent.toString());
-
-        log.info("[Alipay] 创建WAP订单: out_trade_no={}, total_amount={}, subject={}", orderNo, amountCny, description);
-        return client.pageExecute(request).getBody();
     }
 }
