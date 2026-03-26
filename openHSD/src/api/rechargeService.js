@@ -45,16 +45,17 @@ export async function getExchangeRate() {
 /**
  * 创建充值订单
  * 
- * 根据用户选择的充值金额创建微信 Native 支付订单，
+ * 根据用户选择的充值金额和支付渠道创建支付订单，
  * 返回二维码链接供前端生成支付二维码。
  * 
  * @param {number} amountUsd - 充值金额（美元）
+ * @param {string} paymentChannel - 支付渠道（wechat/ali）
  * @returns {Promise<Object>} 包含订单号和二维码链接的响应
  */
-export async function createOrder(amountUsd) {
+export async function createOrder(amountUsd, paymentChannel = 'wechat') {
   const res = await request('/recharge/create', {
     method: 'POST',
-    body: JSON.stringify({ amountUsd })
+    body: JSON.stringify({ amountUsd, paymentChannel })
   })
   return res.json()
 }

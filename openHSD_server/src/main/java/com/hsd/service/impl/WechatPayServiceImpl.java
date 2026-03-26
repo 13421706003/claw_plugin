@@ -4,8 +4,8 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.hsd.config.WechatPayConfig;
 import com.hsd.service.WechatPayService;
-import com.hsd.service.dto.PaymentResult;
-import com.hsd.service.enums.PayType;
+import com.hsd.dto.PaymentResult;
+import com.hsd.enums.PayType;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +18,11 @@ import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+/**
+ * 微信支付服务实现类
+ * 
+ * 实现微信支付 V3 API 的对接，支持 Native 扫码支付
+ */
 @Slf4j
 @Service("wechatPayService")
 @RequiredArgsConstructor
@@ -26,11 +31,26 @@ public class WechatPayServiceImpl implements WechatPayService {
     private final WechatPayConfig wechatPayConfig;
     private final OkHttpClient httpClient = new OkHttpClient();
 
+    /**
+     * 获取支付渠道标识
+     * 
+     * @return 渠道标识 "wechat"
+     */
     @Override
     public String getChannel() {
         return "wechat";
     }
 
+    /**
+     * 创建支付订单
+     * 
+     * @param orderNo 商户订单号
+     * @param amountCents 金额（分）
+     * @param description 订单描述
+     * @param type 支付类型（NATIVE、H5等）
+     * @return 支付二维码链接或跳转链接
+     * @throws Exception 创建订单失败时抛出异常
+     */
     @Override
     public String createOrder(String orderNo, int amountCents, String description, PayType type) throws Exception {
         if (isMockMode()) {
@@ -50,6 +70,9 @@ public class WechatPayServiceImpl implements WechatPayService {
         }
     }
 
+    /**
+     * 内部方法：创建 Native 扫码支付订单
+     */
     private String createNativeOrderInternal(String orderNo, int amountCents, String description) throws Exception {
         String url = "https://api.mch.weixin.qq.com/v3/pay/transactions/native";
         
@@ -94,6 +117,12 @@ public class WechatPayServiceImpl implements WechatPayService {
         }
     }
 
+    /**
+     * 验证微信支付回调签名
+     * 
+     * @param request HTTP 请求
+     * @return 验签是否通过
+     */
     @Override
     public boolean verifyNotify(HttpServletRequest request) {
         String timestamp = request.getHeader("Wechatpay-Timestamp");
@@ -116,6 +145,12 @@ public class WechatPayServiceImpl implements WechatPayService {
         }
     }
 
+    /**
+     * 解析微信支付回调数据
+     * 
+     * @param request HTTP 请求
+     * @return 解析后的支付结果
+     */
     @Override
     public PaymentResult parseNotify(HttpServletRequest request) {
         try {
@@ -154,6 +189,11 @@ public class WechatPayServiceImpl implements WechatPayService {
         }
     }
 
+    /**
+     * 构建微信支付回调成功响应
+     * 
+     * @return 成功响应 Map
+     */
     @Override
     public Map<String, String> buildSuccessResponse() {
         Map<String, String> result = new HashMap<>();
@@ -162,17 +202,28 @@ public class WechatPayServiceImpl implements WechatPayService {
         return result;
     }
 
+    /**
+     * 判断是否为模拟模式
+     * 
+     * @return 是否模拟模式
+     */
     @Override
     public boolean isMockMode() {
         return wechatPayConfig.getMock() != null && wechatPayConfig.getMock();
     }
 
+    /**
+     * @deprecated 请使用 {@link #createOrder} 方法
+     */
     @Deprecated
     @Override
     public String createNativeOrder(String orderNo, int amountCents, String description) throws Exception {
         return createOrder(orderNo, amountCents, description, PayType.NATIVE);
     }
 
+    /**
+     * @deprecated 请使用 {@link #verifyNotify(HttpServletRequest)} 方法
+     */
     @Deprecated
     @Override
     public boolean verifyNotify(String timestamp, String nonce, String body, String signature) {
@@ -190,6 +241,9 @@ public class WechatPayServiceImpl implements WechatPayService {
         }
     }
 
+    /**
+     * @deprecated 内部方法，请使用 {@link #parseNotify(HttpServletRequest)}
+     */
     @Deprecated
     @Override
     public JSONObject parseNotifyBody(String body) {
@@ -211,6 +265,9 @@ public class WechatPayServiceImpl implements WechatPayService {
         }
     }
 
+    /**
+     * AES-256-GCM 解密
+     */
     private String decryptAES256GCM(String ciphertext, String nonce, String associatedData) throws Exception {
         byte[] key = wechatPayConfig.getApiV3Key().getBytes(StandardCharsets.UTF_8);
         byte[] iv = nonce.getBytes(StandardCharsets.UTF_8);
@@ -229,6 +286,9 @@ public class WechatPayServiceImpl implements WechatPayService {
         return new String(decrypted, StandardCharsets.UTF_8);
     }
 
+    /**
+     * 生成签名
+     */
     private String generateSignature(String method, String path, String timestamp, String nonce, String body) throws Exception {
         String message = method + "\n" + path + "\n" + timestamp + "\n" + nonce + "\n" + body + "\n";
         Mac mac = Mac.getInstance("HmacSHA256");
@@ -238,6 +298,9 @@ public class WechatPayServiceImpl implements WechatPayService {
         return Base64.getEncoder().encodeToString(hash);
     }
 
+    /**
+     * 构建 Authorization 头
+     */
     private String buildAuthorization(String timestamp, String nonce, String signature) {
         return String.format(
             "WECHATPAY2-SHA256-RSA2048 mchid=\"%s\",nonce_str=\"%s\",signature=\"%s\",timestamp=\"%s\",serial_no=\"%s\"",

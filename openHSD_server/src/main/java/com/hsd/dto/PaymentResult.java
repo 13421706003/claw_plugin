@@ -1,4 +1,4 @@
-package com.hsd.service.dto;
+package com.hsd.dto;
 
 import lombok.Data;
 

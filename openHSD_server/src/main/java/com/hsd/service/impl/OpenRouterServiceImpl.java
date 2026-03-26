@@ -27,6 +27,13 @@ public class OpenRouterServiceImpl implements OpenRouterService {
     private final OpenRouterConfig openRouterConfig;
     private final OkHttpClient httpClient = new OkHttpClient();
 
+    /**
+     * 根据 Key Hash 获取 Key 信息
+     * 
+     * @param keyHash Key 的哈希值
+     * @return Key 信息 JSON
+     * @throws IOException 网络请求失败
+     */
     @Override
     public JSONObject getKeyInfo(String keyHash) throws IOException {
         String url = openRouterConfig.getBaseUrl() + "/keys/" + keyHash;
@@ -48,6 +55,13 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         }
     }
 
+    /**
+     * 获取当前 API Key 的信息
+     * 
+     * @param apiKey API Key
+     * @return Key 信息 JSON
+     * @throws IOException 网络请求失败
+     */
     @Override
     public JSONObject getCurrentKeyInfo(String apiKey) throws IOException {
         String url = openRouterConfig.getBaseUrl() + "/key";
@@ -75,6 +89,13 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         }
     }
 
+    /**
+     * 获取账户额度信息
+     * 
+     * @param apiKey API Key
+     * @return 额度信息 JSON
+     * @throws IOException 网络请求失败
+     */
     @Override
     public JSONObject getCredits(String apiKey) throws IOException {
         String url = openRouterConfig.getBaseUrl() + "/credits";
@@ -96,6 +117,14 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         }
     }
 
+    /**
+     * 更新 Key 的额度限制
+     * 
+     * @param keyHash Key 的哈希值
+     * @param newLimit 新的额度限制
+     * @return 是否更新成功
+     * @throws IOException 网络请求失败
+     */
     @Override
     public boolean updateKeyLimit(String keyHash, double newLimit) throws IOException {
         String url = openRouterConfig.getBaseUrl() + "/keys/" + keyHash;
@@ -130,6 +159,13 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         }
     }
 
+    /**
+     * 验证 API Key 并获取 Key Hash
+     * 
+     * @param apiKey API Key
+     * @return Key Hash，验证失败返回 null
+     * @throws IOException 网络请求失败
+     */
     @Override
     public String verifyAndGetKeyHash(String apiKey) throws IOException {
         JSONObject keyInfo = getCurrentKeyInfo(apiKey);
@@ -145,6 +181,12 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         return extractKeyHashFromLabel(label);
     }
 
+    /**
+     * 获取所有 Key 列表
+     * 
+     * @return Key 列表 JSON
+     * @throws IOException 网络请求失败
+     */
     @Override
     public JSONObject listKeys() throws IOException {
         String url = openRouterConfig.getBaseUrl() + "/keys";
@@ -165,6 +207,14 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         }
     }
 
+    /**
+     * 创建新的 API Key
+     * 
+     * @param name Key 名称
+     * @param limit 额度限制（可为 null）
+     * @return 创建结果 JSON
+     * @throws IOException 网络请求失败
+     */
     @Override
     public JSONObject createKey(String name, Double limit) throws IOException {
         String url = openRouterConfig.getBaseUrl() + "/keys";
@@ -201,6 +251,13 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         }
     }
 
+    /**
+     * 根据 Label 查找 Key Hash
+     * 
+     * @param label Key 标签（格式如 sk-or-xxx...yyy）
+     * @return Key Hash
+     * @throws IOException 网络请求失败
+     */
     @Override
     public String findKeyHashByLabel(String label) throws IOException {
         if (label == null || !label.contains("...")) {
@@ -240,6 +297,9 @@ public class OpenRouterServiceImpl implements OpenRouterService {
         return null;
     }
 
+    /**
+     * 从 Label 中提取 Key Hash
+     */
     private String extractKeyHashFromLabel(String label) {
         if (label == null || !label.startsWith("sk-or-")) {
             return null;

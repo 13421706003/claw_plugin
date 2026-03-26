@@ -1,4 +1,4 @@
-package com.hsd.service.enums;
+package com.hsd.enums;
 
 /**
  * 支付方式枚举

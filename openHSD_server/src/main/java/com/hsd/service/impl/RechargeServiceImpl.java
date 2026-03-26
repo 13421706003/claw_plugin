@@ -8,8 +8,8 @@ import com.hsd.mapper.UserMapper;
 import com.hsd.service.OpenRouterService;
 import com.hsd.service.PaymentService;
 import com.hsd.service.RechargeService;
-import com.hsd.service.enums.PayType;
-import com.hsd.service.enums.PaymentChannel;
+import com.hsd.enums.PayType;
+import com.hsd.enums.PaymentChannel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -45,6 +45,12 @@ public class RechargeServiceImpl implements RechargeService {
     /** 订单号时间格式 */
     private static final DateTimeFormatter ORDER_NO_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
+    /**
+     * 获取用户绑定的 Key 信息
+     * 
+     * @param userId 用户ID
+     * @return Key 信息（包含额度、使用量等）
+     */
     @Override
     public Map<String, Object> getKeyInfo(Long userId) {
         Map<String, Object> result = new HashMap<>();
@@ -85,6 +91,9 @@ public class RechargeServiceImpl implements RechargeService {
         return result;
     }
 
+    /**
+     * 构建 Key 信息 Map
+     */
     private Map<String, Object> buildKeyInfoMap(JSONObject keyInfo) {
         Map<String, Object> map = new HashMap<>();
         if (keyInfo == null) return map;
@@ -98,6 +107,13 @@ public class RechargeServiceImpl implements RechargeService {
         return map;
     }
 
+    /**
+     * 绑定 OpenRouter API Key
+     * 
+     * @param userId 用户ID
+     * @param apiKey API Key
+     * @return 绑定结果
+     */
     @Override
     @Transactional
     public Map<String, Object> bindKey(Long userId, String apiKey) {
@@ -151,6 +167,9 @@ public class RechargeServiceImpl implements RechargeService {
         return result;
     }
 
+    /**
+     * 遮蔽 API Key（仅显示前后几位）
+     */
     private String maskApiKey(String key) {
         if (key == null || key.length() < 12) {
             return key;
@@ -158,12 +177,28 @@ public class RechargeServiceImpl implements RechargeService {
         return key.substring(0, 10) + "****" + key.substring(key.length() - 4);
     }
 
+    /**
+     * 创建充值订单（默认微信支付）
+     * 
+     * @param userId 用户ID
+     * @param amountUsd 充值金额（美元）
+     * @return 订单信息
+     */
     @Override
     @Transactional
     public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd) {
         return createOrder(userId, amountUsd, PaymentChannel.WECHAT, PayType.NATIVE);
     }
 
+    /**
+     * 创建充值订单
+     * 
+     * @param userId 用户ID
+     * @param amountUsd 充值金额（美元）
+     * @param channel 支付渠道
+     * @param payType 支付类型
+     * @return 订单信息
+     */
     @Override
     @Transactional
     public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd, PaymentChannel channel, PayType payType) {
@@ -232,6 +267,12 @@ public class RechargeServiceImpl implements RechargeService {
         return result;
     }
 
+    /**
+     * 查询订单状态
+     * 
+     * @param orderNo 订单号
+     * @return 订单状态信息
+     */
     @Override
     public Map<String, Object> getOrderStatus(String orderNo) {
         Map<String, Object> result = new HashMap<>();
@@ -255,6 +296,9 @@ public class RechargeServiceImpl implements RechargeService {
         return result;
     }
 
+    /**
+     * 获取状态文本描述
+     */
     private String getStatusText(Integer status) {
         if (status == null) return "未知";
         return switch (status) {
@@ -266,6 +310,16 @@ public class RechargeServiceImpl implements RechargeService {
         };
     }
 
+    /**
+     * 处理支付成功回调
+     * 
+     * 更新订单状态并调用 OpenRouter API 增加额度
+     * 
+     * @param orderNo 订单号
+     * @param channelOrderId 渠道订单号
+     * @param paidAtStr 支付时间
+     * @return 是否处理成功
+     */
     @Override
     @Transactional
     public boolean handlePaySuccess(String orderNo, String channelOrderId, String paidAtStr) {
@@ -333,6 +387,13 @@ public class RechargeServiceImpl implements RechargeService {
         }
     }
 
+    /**
+     * 获取订单历史记录
+     * 
+     * @param userId 用户ID
+     * @param limit 返回数量限制
+     * @return 订单列表
+     */
     @Override
     public Map<String, Object> getOrderHistory(Long userId, int limit) {
         Map<String, Object> result = new HashMap<>();
@@ -355,11 +416,22 @@ public class RechargeServiceImpl implements RechargeService {
         return result;
     }
 
+    /**
+     * 获取美元兑人民币汇率
+     * 
+     * @return 汇率
+     */
     @Override
     public BigDecimal getExchangeRate() {
         return EXCHANGE_RATE;
     }
 
+    /**
+     * 模拟支付成功（仅用于测试）
+     * 
+     * @param orderNo 订单号
+     * @return 模拟支付结果
+     */
     @Override
     public Map<String, Object> mockPaySuccess(String orderNo) {
         Map<String, Object> result = new HashMap<>();

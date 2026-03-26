@@ -1,4 +1,4 @@
-package com.hsd.service.enums;
+package com.hsd.enums;
 
 import lombok.Getter;
 
@@ -14,7 +14,7 @@ public enum PaymentChannel {
     WECHAT("wechat"),
     
     /** 支付宝支付 */
-    ALIPAY("alipay");
+    ALIPAY("ali");
 
     /** 渠道标识码 */
     private final String code;

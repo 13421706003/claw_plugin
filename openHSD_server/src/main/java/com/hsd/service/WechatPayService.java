@@ -1,8 +1,8 @@
 package com.hsd.service;
 
 import com.alibaba.fastjson2.JSONObject;
-import com.hsd.service.dto.PaymentResult;
-import com.hsd.service.enums.PayType;
+import com.hsd.dto.PaymentResult;
+import com.hsd.enums.PayType;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.Map;

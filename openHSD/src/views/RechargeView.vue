@@ -10,7 +10,7 @@
  * - 充值历史记录展示
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { PayCircleOutlined, KeyOutlined, DollarOutlined, SwapOutlined, HistoryOutlined, QrcodeOutlined, CheckCircleOutlined } from '@ant-design/icons-vue'
+import { PayCircleOutlined, KeyOutlined, DollarOutlined, SwapOutlined, HistoryOutlined, QrcodeOutlined, CheckCircleOutlined, WechatOutlined, AlipayOutlined } from '@ant-design/icons-vue'
 import { Card, Button, InputNumber, Modal, QRCode, message, Spin, Progress, Tag } from 'ant-design-vue'
 import { getKeyInfo, bindKey, createOrder, getOrderStatus, getOrderHistory, mockPaySuccess } from '../api/rechargeService.js'
 import { useUserStore } from '../stores/user.js'
@@ -39,6 +39,9 @@ const selectedAmount = ref(10)
 
 /** 自定义输入金额 */
 const customAmount = ref(null)
+
+/** 支付渠道：wechat / ali */
+const paymentChannel = ref('wechat')
 
 /** 充值历史记录列表 */
 const orderHistory = ref([])
@@ -259,7 +262,7 @@ const handleRecharge = async () => {
   
   loading.value = true
   try {
-    const res = await createOrder(amount)
+    const res = await createOrder(amount, paymentChannel.value)
     if (res.success) {
       payQrcodeUrl.value = res.qrcodeUrl
       payOrderNo.value = res.orderNo
@@ -403,8 +406,8 @@ const getStatusTag = (status) => {
     
     <div class="page-content">
       <Spin :spinning="loading">
-        <div class="cards-container">
-          <div class="cards-row">
+        <div class="main-layout">
+          <div class="left-panel">
             <Card class="info-card">
               <template #title>
                 <span class="card-title"><KeyOutlined /> API Key 状态</span>
@@ -473,72 +476,108 @@ const getStatusTag = (status) => {
             </Card>
           </div>
           
-          <Card class="recharge-card">
-            <template #title>
-              <span class="card-title">💳 选择充值金额</span>
-            </template>
-            
-            <div class="amount-section">
-              <div class="preset-amounts">
-                <div
-                  v-for="amount in presetAmounts"
-                  :key="amount"
-                  :class="['amount-item', { active: selectedAmount === amount && customAmount === null }]"
-                  @click="selectAmount(amount)"
-                >
-                  <div class="amount-usd">${{ amount }}</div>
-                  <div class="amount-cny">¥{{ amount * exchangeRate }}</div>
-                </div>
-              </div>
+          <div class="right-panel">
+            <Card class="recharge-card">
+              <template #title>
+                <span class="card-title">💳 选择充值金额</span>
+              </template>
               
-              <div class="custom-amount">
-                <span class="custom-label">自定义金额</span>
-                <div class="custom-input">
-                  <InputNumber
-                    v-model:value="customAmount"
-                    :min="1"
-                    :max="10000"
-                    :precision="2"
-                    placeholder="输入金额"
-                    style="width: 150px"
-                    @change="handleCustomChange"
-                  />
-                  <span class="unit">USD</span>
-                  <span class="equal">=</span>
-                  <span class="cny-value">¥{{ displayAmountCny }}</span>
-                </div>
-              </div>
-              
-              <div class="recharge-action">
-                <Button type="primary" size="large" :loading="loading" @click="handleRecharge">
-                  立即充值
-                </Button>
-              </div>
-            </div>
-          </Card>
-          
-          <Card class="history-card">
-            <template #title>
-              <span class="card-title"><HistoryOutlined /> 充值记录</span>
-            </template>
-            
-            <div v-if="orderHistory.length > 0" class="history-list">
-              <div v-for="order in orderHistory" :key="order.orderNo" class="history-item">
-                <div class="history-left">
-                  <div class="history-amount">
-                    <span class="usd">${{ order.amountUsd }}</span>
-                    <span class="cny">¥{{ order.amountCny }}</span>
+              <div class="amount-section">
+                <div class="section-label">支付方式</div>
+                <div class="payment-channels">
+                  <div
+                    :class="['channel-item', { active: paymentChannel === 'wechat' }]"
+                    @click="paymentChannel = 'wechat'"
+                  >
+                    <WechatOutlined class="channel-icon wechat" />
+                    <span class="channel-name">微信支付</span>
                   </div>
-                  <div class="history-time">{{ formatTime(order.createdAt) }}</div>
+                  <div
+                    :class="['channel-item', { active: paymentChannel === 'ali' }]"
+                    @click="paymentChannel = 'ali'"
+                  >
+                    <AlipayOutlined class="channel-icon alipay" />
+                    <span class="channel-name">支付宝</span>
+                  </div>
                 </div>
-                <div class="history-right">
-                  <Tag :color="getStatusTag(order.status).color">{{ getStatusTag(order.status).text }}</Tag>
+                
+                <div class="section-label">充值金额</div>
+                <div class="preset-amounts">
+                  <div
+                    v-for="amount in presetAmounts"
+                    :key="amount"
+                    :class="['amount-item', { active: selectedAmount === amount && customAmount === null }]"
+                    @click="selectAmount(amount)"
+                  >
+                    <div class="amount-usd">${{ amount }}</div>
+                    <div class="amount-cny">¥{{ amount * exchangeRate }}</div>
+                  </div>
+                </div>
+                
+                <div class="custom-amount">
+                  <span class="custom-label">自定义金额</span>
+                  <div class="custom-input">
+                    <InputNumber
+                      v-model:value="customAmount"
+                      :min="1"
+                      :max="10000"
+                      :precision="2"
+                      placeholder="输入金额"
+                      style="width: 150px"
+                      @change="handleCustomChange"
+                    />
+                    <span class="unit">USD</span>
+                    <span class="equal">=</span>
+                    <span class="cny-value">¥{{ displayAmountCny }}</span>
+                  </div>
+                </div>
+                
+                <div class="recharge-summary">
+                  <div class="summary-row">
+                    <span>充值金额</span>
+                    <span class="summary-value">${{ displayAmount }}</span>
+                  </div>
+                  <div class="summary-row">
+                    <span>应付金额</span>
+                    <span class="summary-value highlight">¥{{ displayAmountCny }}</span>
+                  </div>
+                  <div class="summary-row">
+                    <span>支付方式</span>
+                    <span class="summary-value">{{ paymentChannel === 'wechat' ? '微信支付' : '支付宝' }}</span>
+                  </div>
+                </div>
+                
+                <div class="recharge-action">
+                  <Button type="primary" size="large" :loading="loading" @click="handleRecharge">
+                    立即充值
+                  </Button>
                 </div>
               </div>
-            </div>
-            <div v-else class="no-history">暂无充值记录</div>
-          </Card>
+            </Card>
+          </div>
         </div>
+        
+        <Card class="history-card">
+          <template #title>
+            <span class="card-title"><HistoryOutlined /> 充值记录</span>
+          </template>
+          
+          <div v-if="orderHistory.length > 0" class="history-list">
+            <div v-for="order in orderHistory" :key="order.orderNo" class="history-item">
+              <div class="history-left">
+                <div class="history-amount">
+                  <span class="usd">${{ order.amountUsd }}</span>
+                  <span class="cny">¥{{ order.amountCny }}</span>
+                </div>
+                <div class="history-time">{{ formatTime(order.createdAt) }}</div>
+              </div>
+              <div class="history-right">
+                <Tag :color="getStatusTag(order.status).color">{{ getStatusTag(order.status).text }}</Tag>
+              </div>
+            </div>
+          </div>
+          <div v-else class="no-history">暂无充值记录</div>
+        </Card>
       </Spin>
     </div>
     
@@ -563,7 +602,7 @@ const getStatusTag = (status) => {
     
     <Modal
       v-model:open="payModalVisible"
-      :title="mockMode ? '模拟支付' : '微信支付'"
+      :title="mockMode ? '模拟支付' : (paymentChannel === 'wechat' ? '微信支付' : '支付宝支付')"
       :footer="null"
       :closable="payStatus < 2"
       :maskClosable="false"
@@ -571,7 +610,7 @@ const getStatusTag = (status) => {
       <div class="pay-modal-content">
         <div v-if="payStatus < 2" class="pay-qrcode">
           <QRCode :value="payQrcodeUrl" :size="200" />
-          <p class="pay-tip">{{ mockMode ? '模拟支付模式' : '请使用微信扫码支付' }}</p>
+          <p class="pay-tip">{{ mockMode ? '模拟支付模式' : (paymentChannel === 'wechat' ? '请使用微信扫码支付' : '请使用支付宝扫码支付') }}</p>
           <div class="pay-info">
             <div class="pay-amount">
               <span class="label">支付金额：</span>
@@ -618,6 +657,7 @@ const getStatusTag = (status) => {
   padding: 20px 24px;
   border-bottom: 1px solid #f0f0f0;
   background: #fff;
+  flex-shrink: 0;
 }
 
 .header-icon {
@@ -641,18 +681,30 @@ const getStatusTag = (status) => {
   flex: 1;
   overflow: auto;
   padding: 24px;
+  display: flex;
+  flex-direction: column;
 }
 
-.cards-container {
-  max-width: 1200px;
-  margin: 0 auto;
+.main-layout {
+  display: flex;
+  gap: 24px;
+  flex: 1;
+  min-height: 0;
 }
 
-.cards-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.left-panel {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  margin-bottom: 16px;
+}
+
+.right-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .info-card {
@@ -752,17 +804,81 @@ const getStatusTag = (status) => {
 .recharge-card {
   background: #fff;
   border-radius: 12px;
-  margin-bottom: 16px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.recharge-card :deep(.ant-card-body) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .amount-section {
-  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+}
+
+.section-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.payment-channels {
+  display: flex;
+  gap: 16px;
+}
+
+.channel-item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 24px;
+  border: 2px solid #e8e8e8;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fafafa;
+}
+
+.channel-item:hover {
+  border-color: #1677ff;
+  background: #f0f7ff;
+}
+
+.channel-item.active {
+  border-color: #1677ff;
+  background: #e6f4ff;
+}
+
+.channel-icon {
+  font-size: 24px;
+}
+
+.channel-icon.wechat {
+  color: #07c160;
+}
+
+.channel-icon.alipay {
+  color: #1677ff;
+}
+
+.channel-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: #333;
 }
 
 .preset-amounts {
   display: flex;
   gap: 12px;
-  margin-bottom: 24px;
 }
 
 .amount-item {
@@ -804,7 +920,6 @@ const getStatusTag = (status) => {
   padding: 16px;
   background: #fafafa;
   border-radius: 8px;
-  margin-bottom: 24px;
 }
 
 .custom-label {
@@ -833,29 +948,68 @@ const getStatusTag = (status) => {
   color: #ff4d4f;
 }
 
+.recharge-summary {
+  background: #f5f7fa;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: auto;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 14px;
+  color: #666;
+}
+
+.summary-row:not(:last-child) {
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.summary-value {
+  font-weight: 500;
+  color: #333;
+}
+
+.summary-value.highlight {
+  font-size: 18px;
+  color: #ff4d4f;
+}
+
 .recharge-action {
   text-align: center;
+  padding-top: 20px;
+}
+
+.recharge-action .ant-btn {
+  min-width: 200px;
+  height: 48px;
+  font-size: 16px;
 }
 
 .history-card {
   background: #fff;
   border-radius: 12px;
+  margin-top: 24px;
+  flex-shrink: 0;
 }
 
 .history-list {
   padding: 4px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
 }
 
 .history-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.history-item:last-child {
-  border-bottom: none;
+  padding: 12px 16px;
+  background: #fafafa;
+  border-radius: 8px;
 }
 
 .history-left {
@@ -979,14 +1133,33 @@ const getStatusTag = (status) => {
 }
 
 @media (max-width: 1024px) {
-  .cards-row {
-    grid-template-columns: repeat(2, 1fr);
+  .main-layout {
+    flex-direction: column;
+  }
+  
+  .left-panel {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .left-panel .info-card {
+    flex: 1;
+    min-width: 200px;
+  }
+  
+  .payment-channels {
+    flex-wrap: wrap;
+  }
+  
+  .channel-item {
+    min-width: calc(50% - 8px);
   }
 }
 
 @media (max-width: 640px) {
-  .cards-row {
-    grid-template-columns: 1fr;
+  .page-content {
+    padding: 16px;
   }
   
   .preset-amounts {
@@ -995,6 +1168,14 @@ const getStatusTag = (status) => {
   
   .amount-item {
     min-width: calc(33% - 8px);
+  }
+  
+  .payment-channels {
+    flex-direction: column;
+  }
+  
+  .channel-item {
+    min-width: 100%;
   }
 }
 </style>

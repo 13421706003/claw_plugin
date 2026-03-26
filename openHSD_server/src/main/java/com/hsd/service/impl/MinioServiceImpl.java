@@ -298,6 +298,14 @@ public class MinioServiceImpl implements MinioService {
         };
     }
 
+    /**
+     * 将 MinIO 对象转换为 Data URL
+     * 
+     * @param objectKey 对象路径
+     * @param mimeType MIME 类型
+     * @return Data URL（base64编码）
+     * @throws Exception 获取或编码失败时抛出异常
+     */
     @Override
     public String objectToDataUrl(String objectKey, String mimeType) throws Exception {
         try (InputStream is = minioClient.getObject(

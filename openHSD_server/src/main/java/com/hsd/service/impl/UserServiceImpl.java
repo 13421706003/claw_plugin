@@ -13,6 +13,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 用户服务实现类
+ * 
+ * 提供用户登录、注册等核心业务逻辑
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -21,6 +26,14 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final JwtUtil jwtUtil;
 
+    /**
+     * 用户登录
+     * 
+     * @param username 用户名
+     * @param password 密码（明文）
+     * @return 登录结果，包含 token、userId、username
+     * @throws RuntimeException 用户名或密码错误时抛出异常
+     */
     @Override
     public Map<String, Object> login(String username, String password) {
         User user = userMapper.findByUsername(username);
@@ -43,6 +56,13 @@ public class UserServiceImpl implements UserService {
         return result;
     }
 
+    /**
+     * 用户注册
+     * 
+     * @param username 用户名
+     * @param password 密码（明文，长度不少于6位）
+     * @throws RuntimeException 用户名为空、密码过短或用户名已存在时抛出异常
+     */
     @Override
     public void register(String username, String password) {
         if (username == null || username.trim().isEmpty()) {
@@ -62,6 +82,12 @@ public class UserServiceImpl implements UserService {
         log.info("[UserServiceImpl] 用户注册成功：username={}", username);
     }
 
+    /**
+     * MD5 加密
+     * 
+     * @param input 原始字符串
+     * @return MD5 哈希值
+     */
     private String md5(String input) {
         return DigestUtils.md5DigestAsHex(input.getBytes(StandardCharsets.UTF_8));
     }

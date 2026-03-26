@@ -1,7 +1,7 @@
 package com.hsd.service;
 
-import com.hsd.service.enums.PayType;
-import com.hsd.service.enums.PaymentChannel;
+import com.hsd.enums.PayType;
+import com.hsd.enums.PaymentChannel;
 
 import java.math.BigDecimal;
 import java.util.Map;

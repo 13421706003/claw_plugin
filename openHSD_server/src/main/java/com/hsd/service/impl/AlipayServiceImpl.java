@@ -2,8 +2,8 @@ package com.hsd.service.impl;
 
 import com.hsd.config.AlipayConfig;
 import com.hsd.service.AlipayService;
-import com.hsd.service.dto.PaymentResult;
-import com.hsd.service.enums.PayType;
+import com.hsd.dto.PaymentResult;
+import com.hsd.enums.PayType;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +19,7 @@ import java.util.Map;
  * 真实的支付宝支付功能待后续开发。
  */
 @Slf4j
-@Service("alipayService")
+@Service("aliPayService")
 @RequiredArgsConstructor
 public class AlipayServiceImpl implements AlipayService {
 

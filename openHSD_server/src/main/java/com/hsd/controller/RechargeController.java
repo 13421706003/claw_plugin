@@ -4,9 +4,9 @@ import com.alibaba.fastjson2.JSONObject;
 import com.hsd.service.OpenRouterService;
 import com.hsd.service.PaymentService;
 import com.hsd.service.RechargeService;
-import com.hsd.service.dto.PaymentResult;
-import com.hsd.service.enums.PayType;
-import com.hsd.service.enums.PaymentChannel;
+import com.hsd.dto.PaymentResult;
+import com.hsd.enums.PayType;
+import com.hsd.enums.PaymentChannel;
 import com.hsd.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +18,15 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 充值控制器
+ * 
+ * 提供充值相关的 RESTful API，包括：
+ * - API Key 绑定与查询
+ * - 充值订单创建与状态查询
+ * - 微信/支付宝支付回调处理
+ * - 模拟支付（测试环境）
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/recharge")
@@ -106,6 +115,16 @@ public class RechargeController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * 创建充值订单
+     * 
+     * 用户发起充值请求，系统创建支付订单并返回支付二维码。
+     * 支持多种支付渠道（微信、支付宝）和支付方式（Native、H5等）。
+     * 
+     * @param authHeader Authorization 请求头（Bearer Token）
+     * @param body 请求体，包含 amountUsd（充值金额）、paymentChannel（支付渠道）、paymentType（支付方式）
+     * @return 订单信息，包含订单号、支付二维码等
+     */
     @PostMapping("/create")
     public ResponseEntity<Map<String, Object>> createOrder(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
@@ -206,6 +225,14 @@ public class RechargeController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * 微信支付回调
+     * 
+     * 接收微信支付异步通知，验证签名后更新订单状态并分配额度。
+     * 
+     * @param request HTTP 请求
+     * @return 处理结果响应
+     */
     @PostMapping("/wechat/notify")
     public ResponseEntity<Map<String, String>> wechatNotify(HttpServletRequest request) {
         log.info("[RechargeController] 收到微信支付通知");
@@ -257,6 +284,14 @@ public class RechargeController {
         }
     }
 
+    /**
+     * 支付宝支付回调
+     * 
+     * 接收支付宝异步通知，验证签名后更新订单状态并分配额度。
+     * 
+     * @param request HTTP 请求
+     * @return 处理结果响应
+     */
     @PostMapping("/alipay/notify")
     public ResponseEntity<Map<String, String>> alipayNotify(HttpServletRequest request) {
         log.info("[RechargeController] 收到支付宝支付通知");
@@ -303,6 +338,15 @@ public class RechargeController {
         }
     }
 
+    /**
+     * 模拟支付成功
+     * 
+     * 仅在模拟模式下可用，用于测试环境模拟支付成功流程。
+     * 
+     * @param authHeader Authorization 请求头（Bearer Token）
+     * @param orderNo 订单号
+     * @return 模拟支付结果
+     */
     @PostMapping("/mock/pay/{orderNo}")
     public ResponseEntity<Map<String, Object>> mockPaySuccess(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
@@ -351,6 +395,15 @@ public class RechargeController {
         }
     }
 
+    /**
+     * 测试接口：创建 OpenRouter Key
+     * 
+     * 仅在模拟模式下可用，用于测试创建 OpenRouter 子 Key。
+     * 
+     * @param name Key 名称
+     * @param limit 额度限制（可选）
+     * @return 创建结果
+     */
     @PostMapping("/test/create-key")
     public ResponseEntity<Map<String, Object>> testCreateKey(
             @RequestParam String name,
@@ -385,6 +438,13 @@ public class RechargeController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * 测试接口：列出所有 OpenRouter Key
+     * 
+     * 仅在模拟模式下可用，用于测试查看所有 OpenRouter 子 Key。
+     * 
+     * @return Key 列表
+     */
     @GetMapping("/test/list-keys")
     public ResponseEntity<Map<String, Object>> testListKeys() {
         
@@ -417,6 +477,15 @@ public class RechargeController {
         return ResponseEntity.ok(result);
     }
 
+    /**
+     * 测试接口：更新 OpenRouter Key 额度
+     * 
+     * 仅在模拟模式下可用，用于测试直接更新 OpenRouter Key 的额度限制。
+     * 
+     * @param keyHash Key 的哈希值
+     * @param limit 新的额度限制
+     * @return 更新结果
+     */
     @PatchMapping("/test/update-limit")
     public ResponseEntity<Map<String, Object>> testUpdateLimit(
             @RequestParam String keyHash,
