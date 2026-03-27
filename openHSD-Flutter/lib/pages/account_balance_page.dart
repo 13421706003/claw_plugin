@@ -1,41 +1,69 @@
 part of 'chat_page.dart';
 
-/// 账号余额（模拟页）
-class _AccountBalancePage extends StatelessWidget {
+class _AccountBalancePage extends StatefulWidget {
   const _AccountBalancePage();
 
   @override
-  Widget build(BuildContext context) {
-    const totalBalance = 128.60;
-    const frozenAmount = 20.00;
-    const canUse = totalBalance - frozenAmount;
-    final records = <({String title, String time, String amount, bool plus})>[
-      (
-        title: 'API 调用扣费',
-        time: '今天 14:22',
-        amount: '- ¥3.20',
-        plus: false,
-      ),
-      (
-        title: '充值到账',
-        time: '昨天 18:06',
-        amount: '+ ¥100.00',
-        plus: true,
-      ),
-      (
-        title: '语音识别扣费',
-        time: '昨天 10:31',
-        amount: '- ¥1.80',
-        plus: false,
-      ),
-      (
-        title: '系统赠送',
-        time: '03-21 09:00',
-        amount: '+ ¥30.00',
-        plus: true,
-      ),
-    ];
+  State<_AccountBalancePage> createState() => _AccountBalancePageState();
+}
 
+class _AccountBalancePageState extends State<_AccountBalancePage> {
+  bool _loading = true;
+  String? _error;
+  double _limit = 0;
+  double _usage = 0;
+  double _remaining = 0;
+  List<Map<String, dynamic>> _orders = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final auth = context.read<AuthController>();
+    final api = ApiClient(token: auth.token);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final keyInfo = await api.getRechargeKeyInfo();
+      final key =
+          (keyInfo['keyInfo'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final limit =
+          (key['limit'] as num?)?.toDouble() ??
+          double.tryParse(key['limit']?.toString() ?? '') ??
+          0;
+      final usage =
+          (key['usage'] as num?)?.toDouble() ??
+          double.tryParse(key['usage']?.toString() ?? '') ??
+          0;
+      final remaining =
+          (key['limitRemaining'] as num?)?.toDouble() ??
+          double.tryParse(key['limitRemaining']?.toString() ?? '') ??
+          (limit - usage);
+      final orders = await api.getRechargeHistory(limit: 10);
+      if (!mounted) return;
+      setState(() {
+        _limit = limit;
+        _usage = usage;
+        _remaining = remaining;
+        _orders = orders;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _OhsdChatTheme.pageBg,
       appBar: AppBar(
@@ -64,6 +92,22 @@ class _AccountBalancePage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 20),
         children: [
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                _error!,
+                style: const TextStyle(
+                  color: _OhsdChatTheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -94,7 +138,7 @@ class _AccountBalancePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '¥ ${canUse.toStringAsFixed(2)}',
+                  '\$ ${_remaining.toStringAsFixed(2)}',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 34,
@@ -104,7 +148,7 @@ class _AccountBalancePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '总余额 ¥${totalBalance.toStringAsFixed(2)}    冻结 ¥${frozenAmount.toStringAsFixed(2)}',
+                  '总额度 \$${_limit.toStringAsFixed(2)}    已用 \$${_usage.toStringAsFixed(2)}',
                   style: const TextStyle(
                     color: Color(0xB3FFFFFF),
                     fontSize: 12,
@@ -119,9 +163,7 @@ class _AccountBalancePage extends StatelessWidget {
             text: '充值',
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const _RechargePage(),
-                ),
+                MaterialPageRoute<void>(builder: (_) => const _RechargePage()),
               );
             },
           ),
@@ -150,7 +192,19 @@ class _AccountBalancePage extends StatelessWidget {
                   ),
                 ),
                 const Divider(height: 1, color: _OhsdChatTheme.borderHairline),
-                ...records.map(
+                if (_orders.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      '暂无充值记录',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: _OhsdChatTheme.textTertiary,
+                      ),
+                    ),
+                  ),
+                ..._orders.map(
                   (item) => ListTile(
                     dense: true,
                     visualDensity: const VisualDensity(vertical: -1),
@@ -159,7 +213,7 @@ class _AccountBalancePage extends StatelessWidget {
                       vertical: 2,
                     ),
                     title: Text(
-                      item.title,
+                      '订单 ${item['orderNo'] ?? '--'}',
                       style: const TextStyle(
                         color: _OhsdChatTheme.textPrimary,
                         fontSize: 14,
@@ -167,18 +221,16 @@ class _AccountBalancePage extends StatelessWidget {
                       ),
                     ),
                     subtitle: Text(
-                      item.time,
+                      '${item['statusText'] ?? '未知状态'} · ${item['createdAt'] ?? ''}',
                       style: const TextStyle(
                         color: _OhsdChatTheme.textTertiary,
                         fontSize: 12,
                       ),
                     ),
                     trailing: Text(
-                      item.amount,
+                      '+ \$${item['amountUsd'] ?? '--'}',
                       style: TextStyle(
-                        color: item.plus
-                            ? _OhsdChatTheme.success
-                            : _OhsdChatTheme.error,
+                        color: _OhsdChatTheme.success,
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
                       ),
@@ -189,14 +241,7 @@ class _AccountBalancePage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            '此页面为演示 UI，数据均为模拟。',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 12,
-              color: _OhsdChatTheme.textTertiary,
-            ),
-          ),
+          TextButton(onPressed: _loadData, child: const Text('刷新余额与订单')),
         ],
       ),
     );

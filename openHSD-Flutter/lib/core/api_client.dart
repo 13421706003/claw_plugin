@@ -10,14 +10,14 @@ class ApiClient {
   String? _token;
 
   ApiClient({String? token})
-      // 勿在 BaseOptions 写死 Content-Type：multipart 上传需由 Dio 自动带 boundary
-      : _dio = Dio(
-          BaseOptions(
-            baseUrl: AppConfig.httpBaseUrl,
-            connectTimeout: const Duration(seconds: 15),
-            receiveTimeout: const Duration(seconds: 30),
-          ),
-        ) {
+    // 勿在 BaseOptions 写死 Content-Type：multipart 上传需由 Dio 自动带 boundary
+    : _dio = Dio(
+        BaseOptions(
+          baseUrl: AppConfig.httpBaseUrl,
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+      ) {
     _token = token;
   }
 
@@ -32,7 +32,8 @@ class ApiClient {
       if (success == true) return data;
       final msg = data['message']?.toString();
       final code = data['code']?.toString();
-      final fallback = '请求失败'
+      final fallback =
+          '请求失败'
           '${code != null && code.isNotEmpty ? ' (code=$code)' : ''}'
           '${res.statusCode != null ? ', http=${res.statusCode}' : ''}';
       final detail = (msg != null && msg.isNotEmpty) ? msg : fallback;
@@ -48,9 +49,7 @@ class ApiClient {
     if (_token == null || _token!.isEmpty) {
       return Options(headers: <String, String>{});
     }
-    return Options(headers: {
-      'Authorization': 'Bearer $_token',
-    });
+    return Options(headers: {'Authorization': 'Bearer $_token'});
   }
 
   Future<OpenHsdUser> login(String username, String password) async {
@@ -74,6 +73,67 @@ class ApiClient {
     await _requireSuccess(res);
   }
 
+  Future<double> getRechargeExchangeRate() async {
+    final res = await _dio.get(
+      '${AppConfig.apiPrefix}/recharge/exchange-rate',
+      options: _authOptions(),
+    );
+    final data = res.data;
+    if (data is Map<String, dynamic>) {
+      final rate = data['rate'];
+      if (rate is num) return rate.toDouble();
+      final parsed = double.tryParse(rate?.toString() ?? '');
+      if (parsed != null) return parsed;
+    }
+    throw Exception('获取汇率失败');
+  }
+
+  Future<Map<String, dynamic>> getRechargeKeyInfo() async {
+    final res = await _dio.get(
+      '${AppConfig.apiPrefix}/recharge/key-info',
+      options: _authOptions(),
+    );
+    return _requireSuccess(res);
+  }
+
+  Future<Map<String, dynamic>> createRechargeOrder({
+    required double amountUsd,
+    required String paymentChannel,
+    String paymentType = 'NATIVE',
+  }) async {
+    final res = await _dio.post(
+      '${AppConfig.apiPrefix}/recharge/create',
+      data: {
+        'amountUsd': amountUsd.toStringAsFixed(2),
+        'paymentChannel': paymentChannel,
+        'paymentType': paymentType,
+      },
+      options: _authOptions(),
+    );
+    return _requireSuccess(res);
+  }
+
+  Future<Map<String, dynamic>> getRechargeOrderStatus(String orderNo) async {
+    final res = await _dio.get(
+      '${AppConfig.apiPrefix}/recharge/status/$orderNo',
+      options: _authOptions(),
+    );
+    return _requireSuccess(res);
+  }
+
+  Future<List<Map<String, dynamic>>> getRechargeHistory({
+    int limit = 10,
+  }) async {
+    final res = await _dio.get(
+      '${AppConfig.apiPrefix}/recharge/history',
+      queryParameters: {'limit': limit},
+      options: _authOptions(),
+    );
+    final body = await _requireSuccess(res);
+    final orders = (body['orders'] as List?) ?? const [];
+    return orders.map((e) => (e as Map).cast<String, dynamic>()).toList();
+  }
+
   Future<List<ClawDevice>> getClawStatus(int userId) async {
     final res = await _dio.get(
       '${AppConfig.apiPrefix}/claw/status',
@@ -94,9 +154,7 @@ class ApiClient {
 
     final body = await _requireSuccess(res);
     final list = (body['clawList'] as List?) ?? const [];
-    return list
-        .map((e) => ClawDevice.fromJson((e as Map).cast()))
-        .toList();
+    return list.map((e) => ClawDevice.fromJson((e as Map).cast())).toList();
   }
 
   Future<List<Map<String, dynamic>>> getMessages(
@@ -173,12 +231,18 @@ class ApiClient {
     final body = await _requireSuccess(res);
     final list = (body['files'] as List?) ?? const [];
     return list
-        .map((e) => UploadedServerFile.fromJson((e as Map).cast<String, dynamic>()))
+        .map(
+          (e) =>
+              UploadedServerFile.fromJson((e as Map).cast<String, dynamic>()),
+        )
         .toList();
   }
 
   /// 阿里云百炼语音转写：上传本地录音，一次请求返回全文。
-  Future<String> bailianSpeechTranscribe(String filePath, {int? durationMs}) async {
+  Future<String> bailianSpeechTranscribe(
+    String filePath, {
+    int? durationMs,
+  }) async {
     final form = FormData.fromMap({
       'file': await MultipartFile.fromFile(filePath),
       if (durationMs != null) 'durationMs': durationMs.toString(),
@@ -188,7 +252,8 @@ class ApiClient {
       data: form,
       options: Options(
         headers: {
-          if (_token != null && _token!.isNotEmpty) 'Authorization': 'Bearer $_token',
+          if (_token != null && _token!.isNotEmpty)
+            'Authorization': 'Bearer $_token',
         },
         sendTimeout: const Duration(minutes: 2),
         receiveTimeout: const Duration(minutes: 2),
@@ -202,4 +267,3 @@ class ApiClient {
     throw Exception(msg ?? '语音识别失败');
   }
 }
-

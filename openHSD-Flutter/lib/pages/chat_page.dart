@@ -11,9 +11,11 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../controllers/auth_controller.dart';
 import '../controllers/chat_controller.dart';
+import '../core/api_client.dart';
 import '../core/speech_transcribe.dart';
 import '../models/openhsd_models.dart';
 
@@ -1025,7 +1027,8 @@ class _ChatPageState extends State<ChatPage> {
                       Navigator.of(context).pop();
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => _ProfileCenterPage(auth: auth, chat: chat),
+                          builder: (_) =>
+                              _ProfileCenterPage(auth: auth, chat: chat),
                         ),
                       );
                     },
@@ -1473,10 +1476,11 @@ class _ChatPageState extends State<ChatPage> {
                                             final msg = ok
                                                 ? '刷新完成：在线设备 ${chat.clawList.length} 台'
                                                 : '刷新失败：${chat.lastDeviceRefreshError ?? '请检查网络/后端'}';
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                                  SnackBar(content: Text(msg)),
-                                                );
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(content: Text(msg)),
+                                            );
                                           },
                                     child: Text(
                                       chat.loadingDevices ? '刷新中' : '刷新',
@@ -1896,11 +1900,7 @@ class _UserAvatar extends StatelessWidget {
         border: Border.all(color: _OhsdChatTheme.borderHairline),
       ),
       alignment: Alignment.center,
-      child: const Icon(
-        Icons.person,
-        size: 14,
-        color: Color(0xFF5D6B86),
-      ),
+      child: const Icon(Icons.person, size: 14, color: Color(0xFF5D6B86)),
     );
   }
 }
