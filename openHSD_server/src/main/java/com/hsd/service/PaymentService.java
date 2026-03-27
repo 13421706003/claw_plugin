@@ -76,4 +76,26 @@ public interface PaymentService {
      * @return 模拟模式返回 true，生产模式返回 false
      */
     boolean isMockMode();
+    
+    /**
+     * 关闭订单
+     * 
+     * 主动调用支付渠道API关闭未支付的订单，
+     * 用于系统在业务超时后主动关闭订单。
+     * 
+     * @param orderNo 商户订单号
+     */
+    void closeOrder(String orderNo);
+    
+    /**
+     * 申请退款
+     * 
+     * 当订单已关闭但用户支付成功时，需要调用此方法退款。
+     * 
+     * @param orderNo 商户订单号
+     * @param channelOrderId 渠道订单号
+     * @param amountCents 退款金额（分）
+     * @return 退款是否成功
+     */
+    boolean refund(String orderNo, String channelOrderId, int amountCents);
 }

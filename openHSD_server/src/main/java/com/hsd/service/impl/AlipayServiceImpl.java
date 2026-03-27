@@ -407,6 +407,18 @@ public class AlipayServiceImpl implements AlipayService {
         return alipayConfig.getMock() == null || alipayConfig.getMock();
     }
 
+    @Override
+    public void closeOrder(String orderNo) {
+        log.warn("[Alipay] closeOrder 尚未实现: orderNo={}", orderNo);
+        throw new UnsupportedOperationException("支付宝关单功能尚未实现");
+    }
+
+    @Override
+    public boolean refund(String orderNo, String channelOrderId, int amountCents) {
+        log.warn("[Alipay] refund 尚未实现: orderNo={}", orderNo);
+        throw new UnsupportedOperationException("支付宝退款功能尚未实现");
+    }
+
     private static Map<String, String> getStringMap(HttpServletRequest request) {
         Map<String, String> params = new HashMap<>();
         Map<String, String[]> requestParams = request.getParameterMap();

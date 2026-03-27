@@ -231,6 +231,14 @@ public class RechargeController {
                 return ResponseEntity.badRequest().body(result);
             }
 
+            // 处理订单关闭事件
+            if (notifyData.isClosed() || "TRANSACTION.CLOSED".equals(notifyData.getEventType())) {
+                String orderNo = notifyData.getOrderNo();
+                log.info("[RechargeController] 订单关闭事件: orderNo={}", orderNo);
+                rechargeService.handleWechatOrderClosed(orderNo);
+                return ResponseEntity.ok(wechatPayService.buildSuccessResponse());
+            }
+
             if (!"TRANSACTION.SUCCESS".equals(notifyData.getEventType())) {
                 log.info("[RechargeController] 非成功事件: {}", notifyData.getEventType());
                 return ResponseEntity.ok(wechatPayService.buildSuccessResponse());

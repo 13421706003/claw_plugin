@@ -25,4 +25,14 @@ public interface RechargeService {
     BigDecimal getExchangeRate();
 
     Map<String, Object> mockPaySuccess(String orderNo);
+    
+    /**
+     * 处理微信订单关闭回调
+     * 
+     * 当微信发送 TRANSACTION.CLOSED 事件时调用，
+     * 更新本地订单状态为已关闭。
+     * 
+     * @param orderNo 商户订单号
+     */
+    void handleWechatOrderClosed(String orderNo);
 }

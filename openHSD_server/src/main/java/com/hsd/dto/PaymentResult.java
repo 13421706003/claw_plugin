@@ -26,6 +26,9 @@ public class PaymentResult {
     /** 支付金额（单位：分） */
     private Integer amountCents;
     
-    /** 事件类型（如 TRANSACTION.SUCCESS、TRADE_SUCCESS） */
+    /** 事件类型（如 TRANSACTION.SUCCESS、TRADE_SUCCESS、TRANSACTION.CLOSED） */
     private String eventType;
+    
+    /** 是否为订单关闭事件 */
+    private boolean closed;
 }

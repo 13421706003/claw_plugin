@@ -16,6 +16,9 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.BufferedReader;
 import java.nio.charset.StandardCharsets;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -72,6 +75,8 @@ public class WechatPayServiceImpl implements WechatPayService {
 
     /**
      * 内部方法：创建 Native 扫码支付订单
+     * 
+     * 设置订单过期时间为 15 分钟，系统会在 10 分钟时主动关闭订单。
      */
     private String createNativeOrderInternal(String orderNo, int amountCents, String description) throws Exception {
         String url = "https://api.mch.weixin.qq.com/v3/pay/transactions/native";
@@ -82,6 +87,12 @@ public class WechatPayServiceImpl implements WechatPayService {
         body.put("description", description);
         body.put("out_trade_no", orderNo);
         body.put("notify_url", wechatPayConfig.getNotifyUrl());
+        
+        // 设置订单过期时间（15分钟后，给系统10分钟关单留缓冲）
+        String timeExpire = ZonedDateTime.now(ZoneOffset.of("+8"))
+            .plusMinutes(15)
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        body.put("time_expire", timeExpire);
         
         JSONObject amount = new JSONObject();
         amount.put("total", amountCents);
@@ -171,6 +182,18 @@ public class WechatPayServiceImpl implements WechatPayService {
             result.setSuccess(true);
             result.setEventType(notifyData.getString("event_type"));
             
+            // 处理订单关闭事件
+            String eventType = notifyData.getString("event_type");
+            if ("TRANSACTION.CLOSED".equals(eventType)) {
+                result.setClosed(true);
+                JSONObject resource = notifyData.getJSONObject("resource");
+                if (resource != null) {
+                    result.setOrderNo(resource.getString("out_trade_no"));
+                }
+                return result;
+            }
+            
+            // 支付成功事件
             JSONObject resource = notifyData.getJSONObject("resource");
             if (resource != null) {
                 result.setOrderNo(resource.getString("out_trade_no"));
@@ -210,6 +233,135 @@ public class WechatPayServiceImpl implements WechatPayService {
     @Override
     public boolean isMockMode() {
         return wechatPayConfig.getMock() != null && wechatPayConfig.getMock();
+    }
+
+    /**
+     * 关闭订单
+     * 
+     * 主动调用微信API关闭未支付的订单。
+     * 用于系统在业务超时（10分钟）后主动关闭订单。
+     * 
+     * @param orderNo 商户订单号
+     */
+    @Override
+    public void closeOrder(String orderNo) {
+        if (isMockMode()) {
+            log.info("[WechatPay] 模拟模式：模拟关单成功，orderNo={}", orderNo);
+            return;
+        }
+        
+        String url = String.format(
+            "https://api.mch.weixin.qq.com/v3/pay/transactions/out-trade-no/%s/close",
+            orderNo
+        );
+        
+        JSONObject body = new JSONObject();
+        body.put("mchid", wechatPayConfig.getMchId());
+        
+        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+        String nonceStr = UUID.randomUUID().toString().replace("-", "");
+        String bodyStr = body.toJSONString();
+        
+        String path = "/v3/pay/transactions/out-trade-no/" + orderNo + "/close";
+        
+        try {
+            String signature = generateSignature("POST", path, timestamp, nonceStr, bodyStr);
+            String authorization = buildAuthorization(timestamp, nonceStr, signature);
+            
+            Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", authorization)
+                .addHeader("Content-Type", "application/json")
+                .post(RequestBody.create(bodyStr, MediaType.parse("application/json")))
+                .build();
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
+                log.info("[WechatPay] 关单响应: orderNo={}, response={}", orderNo, respBody);
+                
+                if (!response.isSuccessful()) {
+                    log.error("[WechatPay] 关单失败: orderNo={}, response={}", orderNo, respBody);
+                    throw new RuntimeException("关单失败: " + respBody);
+                }
+                
+                log.info("[WechatPay] 关单成功: orderNo={}", orderNo);
+            }
+        } catch (Exception e) {
+            log.error("[WechatPay] 关单异常: orderNo={}", orderNo, e);
+            throw new RuntimeException("关单异常: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 申请退款
+     * 
+     * 当订单已关闭但用户支付成功时，调用此方法退款。
+     * 
+     * @param orderNo 商户订单号
+     * @param channelOrderId 微信订单号
+     * @param amountCents 退款金额（分）
+     * @return 退款是否成功
+     */
+    @Override
+    public boolean refund(String orderNo, String channelOrderId, int amountCents) {
+        if (isMockMode()) {
+            log.info("[WechatPay] 模拟模式：模拟退款成功，orderNo={}", orderNo);
+            return true;
+        }
+        
+        String url = "https://api.mch.weixin.qq.com/v3/refund/domestic/refunds";
+        
+        JSONObject body = new JSONObject();
+        body.put("out_trade_no", orderNo);
+        body.put("out_refund_no", "RF" + System.currentTimeMillis());
+        body.put("transaction_id", channelOrderId);
+        
+        JSONObject amount = new JSONObject();
+        amount.put("refund", amountCents);
+        amount.put("total", amountCents);
+        amount.put("currency", "CNY");
+        body.put("amount", amount);
+        
+        body.put("reason", "订单已关闭，自动退款");
+        
+        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+        String nonceStr = UUID.randomUUID().toString().replace("-", "");
+        String bodyStr = body.toJSONString();
+        
+        try {
+            String signature = generateSignature("POST", "/v3/refund/domestic/refunds", timestamp, nonceStr, bodyStr);
+            String authorization = buildAuthorization(timestamp, nonceStr, signature);
+            
+            Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", authorization)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Accept", "application/json")
+                .post(RequestBody.create(bodyStr, MediaType.parse("application/json")))
+                .build();
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
+                log.info("[WechatPay] 退款响应: orderNo={}, response={}", orderNo, respBody);
+                
+                if (!response.isSuccessful()) {
+                    log.error("[WechatPay] 退款失败: orderNo={}, response={}", orderNo, respBody);
+                    return false;
+                }
+                
+                JSONObject result = JSON.parseObject(respBody);
+                String status = result.getString("status");
+                boolean success = "SUCCESS".equals(status) || "PROCESSING".equals(status);
+                
+                if (success) {
+                    log.info("[WechatPay] 退款成功: orderNo={}, amountCents={}", orderNo, amountCents);
+                }
+                return success;
+            }
+        } catch (Exception e) {
+            log.error("[WechatPay] 退款异常: orderNo={}", orderNo, e);
+            return false;
+        }
     }
 
     /**

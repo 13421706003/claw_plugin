@@ -3,6 +3,7 @@ package com.hsd.mapper;
 import com.hsd.entity.RechargeOrder;
 import org.apache.ibatis.annotations.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -74,4 +75,25 @@ public interface RechargeOrderMapper {
      */
     @Update("UPDATE recharge_order SET status = #{status}, updated_at = NOW() WHERE order_no = #{orderNo}")
     int updateStatus(@Param("orderNo") String orderNo, @Param("status") Integer status);
+
+    /**
+     * 根据订单号悲观锁查询（用于事务中防止并发）
+     * 
+     * @param orderNo 商户订单号
+     * @return 订单实体，不存在则返回 null
+     */
+    @Select("SELECT * FROM recharge_order WHERE order_no = #{orderNo} FOR UPDATE")
+    RechargeOrder findByOrderNoForUpdate(@Param("orderNo") String orderNo);
+
+    /**
+     * 查询过期的微信待支付订单（用于定时任务）
+     * 
+     * 查询微信渠道、待支付状态、创建时间早于指定时间的订单。
+     * 
+     * @param expireThreshold 过期阈值（创建时间早于此时间）
+     * @param limit 返回数量限制
+     * @return 过期订单列表
+     */
+    @Select("SELECT * FROM recharge_order WHERE status = 0 AND payment_channel = 'wechat' AND created_at < #{expireThreshold} ORDER BY created_at ASC LIMIT #{limit}")
+    List<RechargeOrder> findExpiredWechatOrders(@Param("expireThreshold") LocalDateTime expireThreshold, @Param("limit") int limit);
 }

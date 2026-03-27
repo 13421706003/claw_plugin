@@ -17,18 +17,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 充值业务服务实现类
- * 
- * 核心业务逻辑实现，负责协调微信支付和 OpenRouter API，
- * 实现完整的充值流程。
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -39,18 +34,10 @@ public class RechargeServiceImpl implements RechargeService {
     private final Map<String, PaymentService> paymentServices;
     private final OpenRouterService openRouterService;
 
-    /** 美元兑人民币汇率（固定 8.0） */
     private static final BigDecimal EXCHANGE_RATE = new BigDecimal("8.00");
-    
-    /** 订单号时间格式 */
     private static final DateTimeFormatter ORDER_NO_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    private static final long ORDER_EXPIRE_SECONDS = 600L;
 
-    /**
-     * 获取用户绑定的 Key 信息
-     * 
-     * @param userId 用户ID
-     * @return Key 信息（包含额度、使用量等）
-     */
     @Override
     public Map<String, Object> getKeyInfo(Long userId) {
         Map<String, Object> result = new HashMap<>();
@@ -91,9 +78,6 @@ public class RechargeServiceImpl implements RechargeService {
         return result;
     }
 
-    /**
-     * 构建 Key 信息 Map
-     */
     private Map<String, Object> buildKeyInfoMap(JSONObject keyInfo) {
         Map<String, Object> map = new HashMap<>();
         if (keyInfo == null) return map;
@@ -107,13 +91,6 @@ public class RechargeServiceImpl implements RechargeService {
         return map;
     }
 
-    /**
-     * 绑定 OpenRouter API Key
-     * 
-     * @param userId 用户ID
-     * @param apiKey API Key
-     * @return 绑定结果
-     */
     @Override
     @Transactional
     public Map<String, Object> bindKey(Long userId, String apiKey) {
@@ -167,9 +144,6 @@ public class RechargeServiceImpl implements RechargeService {
         return result;
     }
 
-    /**
-     * 遮蔽 API Key（仅显示前后几位）
-     */
     private String maskApiKey(String key) {
         if (key == null || key.length() < 12) {
             return key;
@@ -177,28 +151,12 @@ public class RechargeServiceImpl implements RechargeService {
         return key.substring(0, 10) + "****" + key.substring(key.length() - 4);
     }
 
-    /**
-     * 创建充值订单（默认微信支付）
-     * 
-     * @param userId 用户ID
-     * @param amountUsd 充值金额（美元）
-     * @return 订单信息
-     */
     @Override
     @Transactional
     public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd) {
         return createOrder(userId, amountUsd, PaymentChannel.WECHAT, PayType.NATIVE);
     }
 
-    /**
-     * 创建充值订单
-     * 
-     * @param userId 用户ID
-     * @param amountUsd 充值金额（美元）
-     * @param channel 支付渠道
-     * @param payType 支付类型
-     * @return 订单信息
-     */
     @Override
     @Transactional
     public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd, PaymentChannel channel, PayType payType) {
@@ -258,6 +216,8 @@ public class RechargeServiceImpl implements RechargeService {
             result.put("paymentChannel", channel.getCode());
             result.put("paymentType", payType.name());
             result.put("mockMode", paymentService.isMockMode());
+            result.put("remainingSeconds", ORDER_EXPIRE_SECONDS);
+            result.put("createdAt", LocalDateTime.now());
         } catch (Exception e) {
             log.error("[RechargeService] 创建订单失败", e);
             result.put("success", false);
@@ -267,12 +227,6 @@ public class RechargeServiceImpl implements RechargeService {
         return result;
     }
 
-    /**
-     * 查询订单状态
-     * 
-     * @param orderNo 订单号
-     * @return 订单状态信息
-     */
     @Override
     public Map<String, Object> getOrderStatus(String orderNo) {
         Map<String, Object> result = new HashMap<>();
@@ -283,6 +237,19 @@ public class RechargeServiceImpl implements RechargeService {
             result.put("message", "订单不存在");
             return result;
         }
+        
+        long remainingSeconds = 0;
+        if (order.getStatus() == RechargeOrder.STATUS_PENDING) {
+            long elapsedSeconds = Duration.between(order.getCreatedAt(), LocalDateTime.now()).getSeconds();
+            remainingSeconds = Math.max(0, ORDER_EXPIRE_SECONDS - elapsedSeconds);
+            
+            if (elapsedSeconds >= ORDER_EXPIRE_SECONDS) {
+                rechargeOrderMapper.updateStatus(orderNo, RechargeOrder.STATUS_CLOSED);
+                order.setStatus(RechargeOrder.STATUS_CLOSED);
+                remainingSeconds = 0;
+                log.info("[RechargeService] 轮询检测到过期订单，已关闭: orderNo={}", orderNo);
+            }
+        }
 
         result.put("success", true);
         result.put("orderNo", order.getOrderNo());
@@ -292,13 +259,12 @@ public class RechargeServiceImpl implements RechargeService {
         result.put("amountUsd", order.getAmountUsd());
         result.put("qrcodeUrl", order.getQrcodeUrl());
         result.put("paidAt", order.getPaidAt());
+        result.put("createdAt", order.getCreatedAt());
+        result.put("remainingSeconds", remainingSeconds);
 
         return result;
     }
 
-    /**
-     * 获取状态文本描述
-     */
     private String getStatusText(Integer status) {
         if (status == null) return "未知";
         return switch (status) {
@@ -310,22 +276,18 @@ public class RechargeServiceImpl implements RechargeService {
         };
     }
 
-    /**
-     * 处理支付成功回调
-     * 
-     * 更新订单状态并调用 OpenRouter API 增加额度
-     * 
-     * @param orderNo 订单号
-     * @param channelOrderId 渠道订单号
-     * @param paidAtStr 支付时间
-     * @return 是否处理成功
-     */
     @Override
     @Transactional
     public boolean handlePaySuccess(String orderNo, String channelOrderId, String paidAtStr) {
-        RechargeOrder order = rechargeOrderMapper.findByOrderNo(orderNo);
+        RechargeOrder order = rechargeOrderMapper.findByOrderNoForUpdate(orderNo);
         if (order == null) {
             log.error("[RechargeService] 订单不存在: {}", orderNo);
+            return false;
+        }
+
+        if (order.getStatus() == RechargeOrder.STATUS_CLOSED) {
+            log.warn("[RechargeService] 订单已关闭，触发退款: orderNo={}, channelOrderId={}", orderNo, channelOrderId);
+            triggerRefund(order, channelOrderId);
             return false;
         }
 
@@ -360,8 +322,6 @@ public class RechargeServiceImpl implements RechargeService {
                 return false;
             }
             
-            log.info("[RechargeService] Key信息返回: {}", currentKeyInfo.toJSONString());
-            
             BigDecimal currentLimit = BigDecimal.ZERO;
             if (currentKeyInfo.getBigDecimal("limit") != null) {
                 currentLimit = currentKeyInfo.getBigDecimal("limit");
@@ -386,14 +346,41 @@ public class RechargeServiceImpl implements RechargeService {
             return false;
         }
     }
+    
+    @Override
+    public void handleWechatOrderClosed(String orderNo) {
+        RechargeOrder order = rechargeOrderMapper.findByOrderNo(orderNo);
+        if (order != null && order.getStatus() == RechargeOrder.STATUS_PENDING) {
+            rechargeOrderMapper.updateStatus(orderNo, RechargeOrder.STATUS_CLOSED);
+            log.info("[RechargeService] 微信订单超时关闭: orderNo={}", orderNo);
+        }
+    }
+    
+    private void triggerRefund(RechargeOrder order, String channelOrderId) {
+        try {
+            PaymentService wechatService = paymentServices.get("wechatPayService");
+            int amountCents = order.getAmountCny()
+                .multiply(new BigDecimal("100"))
+                .setScale(0, RoundingMode.HALF_UP)
+                .intValue();
+            
+            boolean success = wechatService.refund(
+                order.getOrderNo(), 
+                channelOrderId, 
+                amountCents
+            );
+            
+            if (success) {
+                log.info("[RechargeService] 退款成功: orderNo={}, amountCents={}", 
+                    order.getOrderNo(), amountCents);
+            } else {
+                log.error("[RechargeService] 退款失败: orderNo={}", order.getOrderNo());
+            }
+        } catch (Exception e) {
+            log.error("[RechargeService] 退款异常: orderNo={}", order.getOrderNo(), e);
+        }
+    }
 
-    /**
-     * 获取订单历史记录
-     * 
-     * @param userId 用户ID
-     * @param limit 返回数量限制
-     * @return 订单列表
-     */
     @Override
     public Map<String, Object> getOrderHistory(Long userId, int limit) {
         Map<String, Object> result = new HashMap<>();
@@ -410,29 +397,30 @@ public class RechargeServiceImpl implements RechargeService {
             map.put("statusText", getStatusText(order.getStatus()));
             map.put("createdAt", order.getCreatedAt());
             map.put("paidAt", order.getPaidAt());
+            map.put("qrcodeUrl", order.getQrcodeUrl());
+            map.put("paymentChannel", order.getPaymentChannel());
+            
+            if (order.getStatus() == RechargeOrder.STATUS_PENDING) {
+                long elapsedSeconds = Duration.between(order.getCreatedAt(), LocalDateTime.now()).getSeconds();
+                long remainingSeconds = Math.max(0, ORDER_EXPIRE_SECONDS - elapsedSeconds);
+                map.put("remainingSeconds", remainingSeconds);
+            } else {
+                map.put("remainingSeconds", 0L);
+            }
+            
             return map;
         }).toList());
 
         return result;
     }
 
-    /**
-     * 获取美元兑人民币汇率
-     * 
-     * @return 汇率
-     */
     @Override
     public BigDecimal getExchangeRate() {
         return EXCHANGE_RATE;
     }
 
-    /**
-     * 模拟支付成功（仅用于测试）
-     * 
-     * @param orderNo 订单号
-     * @return 模拟支付结果
-     */
     @Override
+    @Transactional
     public Map<String, Object> mockPaySuccess(String orderNo) {
         Map<String, Object> result = new HashMap<>();
         
@@ -458,7 +446,7 @@ public class RechargeServiceImpl implements RechargeService {
         }
         
         String mockChannelOrderId = "MOCK_" + System.currentTimeMillis();
-        String mockPaidAt = java.time.LocalDateTime.now().toString();
+        String mockPaidAt = LocalDateTime.now().toString();
         
         boolean success = handlePaySuccess(orderNo, mockChannelOrderId, mockPaidAt);
         
