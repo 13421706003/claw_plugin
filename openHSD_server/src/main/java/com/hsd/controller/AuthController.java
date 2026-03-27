@@ -1,6 +1,9 @@
 package com.hsd.controller;
 
+import com.hsd.dto.LoginRequest;
+import com.hsd.dto.RegisterRequest;
 import com.hsd.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +12,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 认证控制器
+ * 
+ * 提供用户认证相关的 RESTful API，包括：
+ * - 用户登录
+ * - 用户注册
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/auth")
@@ -18,21 +28,20 @@ public class AuthController {
 
     private final UserService userService;
 
+    /**
+     * 用户登录
+     * 
+     * 验证用户名和密码，成功后返回 JWT Token。
+     * 
+     * @param request 登录请求参数（username, password）
+     * @return 登录结果，包含 token 和用户信息
+     */
     @PostMapping("/login")
-    public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> body) {
-        String username = body.get("username");
-        String password = body.get("password");
-
+    public ResponseEntity<Map<String, Object>> login(@Valid @RequestBody LoginRequest request) {
         Map<String, Object> result = new HashMap<>();
 
-        if (username == null || password == null) {
-            result.put("success", false);
-            result.put("message", "用户名和密码不能为空");
-            return ResponseEntity.badRequest().body(result);
-        }
-
         try {
-            Map<String, Object> data = userService.login(username, password);
+            Map<String, Object> data = userService.login(request.getUsername(), request.getPassword());
             result.put("success", true);
             result.put("message", "登录成功");
             result.putAll(data);
@@ -44,27 +53,20 @@ public class AuthController {
         }
     }
 
+    /**
+     * 用户注册
+     * 
+     * 创建新用户账号，密码长度至少6位。
+     * 
+     * @param request 注册请求参数（username, password）
+     * @return 注册结果
+     */
     @PostMapping("/register")
-    public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> body) {
-        String username = body.get("username");
-        String password = body.get("password");
-
+    public ResponseEntity<Map<String, Object>> register(@Valid @RequestBody RegisterRequest request) {
         Map<String, Object> result = new HashMap<>();
 
-        if (username == null || username.trim().isEmpty()) {
-            result.put("success", false);
-            result.put("message", "用户名不能为空");
-            return ResponseEntity.badRequest().body(result);
-        }
-
-        if (password == null || password.length() < 6) {
-            result.put("success", false);
-            result.put("message", "密码长度不能少于6位");
-            return ResponseEntity.badRequest().body(result);
-        }
-
         try {
-            userService.register(username, password);
+            userService.register(request.getUsername(), request.getPassword());
             result.put("success", true);
             result.put("message", "注册成功");
             return ResponseEntity.ok(result);
