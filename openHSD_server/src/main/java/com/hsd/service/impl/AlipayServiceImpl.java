@@ -19,12 +19,16 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 支付宝支付服务实现类
@@ -64,14 +68,14 @@ public class AlipayServiceImpl implements AlipayService {
             case NATIVE:
                 return createPrecreateOrder(orderNo, amountCents, description);
             case H5:
-                return createWapOrder(orderNo, amountCents, description);
+                return createWapOrderUrl(orderNo, amountCents, description);
             case APP:
                 return createAppOrder(orderNo, amountCents, description);
             case JSAPI:
                 // JSAPI 需要额外的 openid 等参数，当前模型暂不支持。
                 throw new UnsupportedOperationException("暂不支持支付宝 JSAPI 支付方式");
             default:
-                return createWapOrder(orderNo, amountCents, description);
+                return createWapOrderUrl(orderNo, amountCents, description);
         }
     }
 
@@ -170,6 +174,84 @@ public class AlipayServiceImpl implements AlipayService {
             log.error("[Alipay] 创建WAP订单失败", e);
             throw e;
         }
+    }
+
+    /**
+     * 创建支付宝WAP支付链接（返回URL，不返回HTML）
+     */
+    private String createWapOrderUrl(String orderNo, int amountCents, String description) throws AlipayApiException {
+        String amountCny = new BigDecimal(amountCents)
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP)
+                .toPlainString();
+
+        AlipayClient alipayClient = new DefaultAlipayClient(
+                alipayConfig.getServerUrl(),
+                alipayConfig.getAppId(),
+                alipayConfig.getPrivateKey(),
+                "json",
+                alipayConfig.getCharset(),
+                alipayConfig.getAlipayPublicKey(),
+                alipayConfig.getSignType()
+        );
+
+        AlipayTradeWapPayRequest alipayRequest = new AlipayTradeWapPayRequest();
+        alipayRequest.setNotifyUrl(alipayConfig.getNotifyUrl());
+        alipayRequest.setReturnUrl(alipayConfig.getReturnUrl());
+
+        JSONObject bizContent = new JSONObject();
+        bizContent.put("out_trade_no", orderNo);
+        bizContent.put("total_amount", amountCny);
+        bizContent.put("subject", description);
+        bizContent.put("product_code", "QUICK_WAP_WAY");
+        bizContent.put("timeout_express", alipayConfig.getTimeout());
+        alipayRequest.setBizContent(bizContent.toString());
+
+        try {
+            log.info("[Alipay] 创建支付宝WAP支付URL: out_trade_no={}, total_amount={}, subject={}",
+                    orderNo, amountCny, description);
+            String body = alipayClient.pageExecute(alipayRequest, "GET").getBody();
+            return extractWapPayUrl(body);
+        } catch (AlipayApiException e) {
+            log.error("[Alipay] 创建WAP支付URL失败", e);
+            throw e;
+        }
+    }
+
+    /**
+     * 兼容 SDK 返回 URL 或 form 两种场景，统一提取可直接跳转的 URL。
+     */
+    private String extractWapPayUrl(String body) {
+        if (body == null || body.isBlank()) {
+            throw new RuntimeException("支付宝返回内容为空，无法提取支付URL");
+        }
+
+        String trimmed = body.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+
+        Matcher actionMatcher = Pattern.compile("action=\"([^\"]+)\"").matcher(trimmed);
+        if (!actionMatcher.find()) {
+            throw new RuntimeException("支付宝返回内容格式异常，未找到支付URL");
+        }
+        String actionUrl = actionMatcher.group(1);
+
+        // 如果是 form 模式，把 hidden 字段拼接到 action 查询串，确保前端拿到的是完整可跳转 URL。
+        Matcher inputMatcher = Pattern.compile("name=\"([^\"]+)\"\\s+value=\"([^\"]*)\"").matcher(trimmed);
+        StringBuilder queryBuilder = new StringBuilder();
+        while (inputMatcher.find()) {
+            if (queryBuilder.length() > 0) {
+                queryBuilder.append("&");
+            }
+            queryBuilder.append(URLEncoder.encode(inputMatcher.group(1), StandardCharsets.UTF_8));
+            queryBuilder.append("=");
+            queryBuilder.append(URLEncoder.encode(inputMatcher.group(2), StandardCharsets.UTF_8));
+        }
+
+        if (queryBuilder.length() == 0) {
+            return actionUrl;
+        }
+        return actionUrl + (actionUrl.contains("?") ? "&" : "?") + queryBuilder;
     }
 
     private String createAppOrder(String orderNo, int amountCents, String description) throws AlipayApiException {
