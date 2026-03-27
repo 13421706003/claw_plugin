@@ -3,10 +3,13 @@ package com.hsd.controller;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
 import com.hsd.dto.AttachmentDTO;
+import com.hsd.dto.ClawBroadcastRequest;
+import com.hsd.dto.ClawSendRequest;
 import com.hsd.service.MessageService;
 import com.hsd.service.MinioService;
 import com.hsd.websocket.ClawWebSocketHandler;
 import com.hsd.websocket.ClawSessionRegistry;
+import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +25,11 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * openHSD 插件消息 REST 接口
+ * 
+ * 提供插件通信相关的 RESTful API，包括：
+ * - 查询设备在线状态
+ * - 单设备消息发送
+ * - 多设备广播消息
  */
 @Slf4j
 @RestController
@@ -47,18 +55,15 @@ public class ClawController {
         this.broadcastExecutor    = broadcastExecutor;
     }
 
-    // ================================================================
-    // 内部结果类
-    // ================================================================
-
     private record BroadcastResult(String clawId, String subMsgId, boolean sent, String error) {}
 
-    // ================================================================
-    // 查询设备状态
-    // ================================================================
-
     /**
-     * GET /api/claw/status?userId=xxx
+     * 查询设备在线状态
+     * 
+     * 获取指定用户的所有插件设备在线状态列表。
+     * 
+     * @param userId 用户ID
+     * @return 设备状态信息
      */
     @GetMapping("/status")
     public ResponseEntity<Map<String, Object>> status(@RequestParam String userId) {
@@ -74,29 +79,22 @@ public class ClawController {
         return ResponseEntity.ok(result);
     }
 
-    // ================================================================
-    // 单设备发送
-    // ================================================================
-
     /**
-     * POST /api/claw/send
+     * 单设备发送消息
+     * 
+     * 向指定设备发送消息，支持文本和附件。
+     * 
+     * @param request 发送请求参数
+     * @return 发送结果
      */
     @PostMapping("/send")
-    public ResponseEntity<Map<String, Object>> send(@RequestBody Map<String, Object> body) {
-        String userId    = (String) body.get("userId");
-        String messageId = (String) body.get("messageId");
-        String content   = (String) body.get("content");
-        String clawId    = (String) body.get("clawId");
+    public ResponseEntity<Map<String, Object>> send(@Valid @RequestBody ClawSendRequest request) {
+        String userId    = request.getUserId();
+        String messageId = request.getMessageId();
+        String content   = request.getContent();
+        String clawId    = request.getClawId();
 
         Map<String, Object> result = new HashMap<>();
-
-        if (userId == null || messageId == null) {
-            result.put("success", false);
-            result.put("message", "缺少必填字段：userId / messageId");
-            return ResponseEntity.badRequest().body(result);
-        }
-
-        if (content == null) content = "";
 
         if (clawId == null || clawId.isBlank()) {
             result.put("success", false);
@@ -104,20 +102,14 @@ public class ClawController {
             return ResponseEntity.ok(result);
         }
 
-        // ======== 处理附件 ========
-        List<?> rawAttachments = body.containsKey("attachments")
-                ? (List<?>) body.get("attachments") : null;
-
-        List<AttachmentDTO> resolvedAttachments = uploadAttachments(rawAttachments, userId, clawId, messageId, result);
+        List<AttachmentDTO> resolvedAttachments = uploadAttachments(request.getAttachments(), userId, clawId, messageId, result);
         if (result.containsKey("success") && !(boolean) result.get("success")) {
             return ResponseEntity.ok(result);
         }
 
-        // ======== 保存消息 ========
         messageService.saveUserMessage(messageId, Long.parseLong(userId), clawId, content,
                 toAttachmentsJson(resolvedAttachments));
 
-        // ======== 检查在线 ========
         if (!clawSessionRegistry.isOnline(userId)) {
             result.put("success", false);
             result.put("online",  false);
@@ -125,8 +117,7 @@ public class ClawController {
             return ResponseEntity.ok(result);
         }
 
-        // ======== 构造 payload 并发送 ========
-        JSONObject payload = buildPayload(messageId, content, body, resolvedAttachments);
+        JSONObject payload = buildPayload(messageId, content, request.getContext(), request.getTimeout(), resolvedAttachments);
 
         ClawSessionRegistry.ClawSession cs = clawSessionRegistry.getSession(userId, clawId);
         if (cs == null || !cs.getWsSession().isOpen()) {
@@ -145,35 +136,22 @@ public class ClawController {
         return ResponseEntity.ok(result);
     }
 
-    // ================================================================
-    // 广播发送（并发）
-    // ================================================================
-
     /**
-     * POST /api/claw/broadcast
-     *
-     * 向用户所有在线插件并发广播消息
-     * 每台机器分配独立的子 messageId: {messageId}_{clawId}
-     * 图片只上传一次 MinIO，所有机器共享
-     * 单台设备超时 5 秒
+     * 广播消息
+     * 
+     * 向用户所有在线插件并发广播消息，每台设备分配独立的子 messageId。
+     * 
+     * @param request 广播请求参数
+     * @return 广播结果
      */
     @PostMapping("/broadcast")
-    public ResponseEntity<Map<String, Object>> broadcast(@RequestBody Map<String, Object> body) {
-        String userId    = (String) body.get("userId");
-        String messageId = (String) body.get("messageId");
-        String content   = (String) body.get("content");
+    public ResponseEntity<Map<String, Object>> broadcast(@Valid @RequestBody ClawBroadcastRequest request) {
+        String userId    = request.getUserId();
+        String messageId = request.getMessageId();
+        String content   = request.getContent();
 
         Map<String, Object> result = new HashMap<>();
 
-        if (userId == null || messageId == null) {
-            result.put("success", false);
-            result.put("message", "缺少必填字段：userId / messageId");
-            return ResponseEntity.badRequest().body(result);
-        }
-
-        if (content == null) content = "";
-
-        // ======== 获取所有在线设备 ========
         List<ClawSessionRegistry.ClawSession> sessions = clawSessionRegistry.getSessions(userId);
         if (sessions.isEmpty()) {
             result.put("success", false);
@@ -182,31 +160,26 @@ public class ClawController {
             return ResponseEntity.ok(result);
         }
 
-        // ======== 处理附件（主线程上传一次，共享 objectKey） ========
-        List<?> rawAttachments = body.containsKey("attachments")
-                ? (List<?>) body.get("attachments") : null;
-
-        List<AttachmentDTO> resolvedAttachments = uploadAttachments(rawAttachments, userId, "broadcast", messageId, result);
+        List<AttachmentDTO> resolvedAttachments = uploadAttachments(request.getAttachments(), userId, "broadcast", messageId, result);
         if (result.containsKey("success") && !(boolean) result.get("success")) {
             return ResponseEntity.ok(result);
         }
 
-        // ======== 并发发送到每台设备 ========
         final String finalContent            = content;
         final String finalAttachmentsJson    = toAttachmentsJson(resolvedAttachments);
         final List<AttachmentDTO> finalAttachments = resolvedAttachments;
+        final Map<String, Object> finalContext = request.getContext();
+        final Integer finalTimeout           = request.getTimeout();
 
         List<CompletableFuture<BroadcastResult>> futures = sessions.stream()
                 .map(cs -> CompletableFuture.supplyAsync(() -> {
                     String clawId   = cs.getClawId();
                     String subMsgId = messageId + "_" + clawId;
                     try {
-                        // 存消息
                         messageService.saveUserMessage(
                                 subMsgId, Long.parseLong(userId), clawId, finalContent, finalAttachmentsJson);
 
-                        // 构造 payload 并发送
-                        JSONObject payload = buildPayload(subMsgId, finalContent, body, finalAttachments);
+                        JSONObject payload = buildPayload(subMsgId, finalContent, finalContext, finalTimeout, finalAttachments);
                         boolean sent = clawWebSocketHandler.sendToSession(
                                 cs.getWsSession(), payload.toJSONString());
 
@@ -219,7 +192,6 @@ public class ClawController {
                 }, broadcastExecutor).orTimeout(5, TimeUnit.SECONDS))
                 .toList();
 
-        // ======== 等待全部完成，收集结果 ========
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         List<BroadcastResult> results = futures.stream()
@@ -250,31 +222,25 @@ public class ClawController {
         return ResponseEntity.ok(result);
     }
 
-    // ================================================================
-    // 私有方法
-    // ================================================================
-
     /**
-     * 构造转发给插件的 payload JSON。
-     * 图片附件优先补充 base64（并保留 url）以兼容仅支持内联图片的链路。
+     * 构造转发给插件的 payload JSON
      */
     private JSONObject buildPayload(String messageId, String content,
-                                     Map<String, Object> body,
+                                     Map<String, Object> context,
+                                     Integer timeout,
                                      List<AttachmentDTO> resolvedAttachments) {
         JSONObject payload = new JSONObject();
         payload.put("type",      "request");
         payload.put("messageId", messageId);
         payload.put("content",   content);
-        if (body.containsKey("context")) payload.put("context", body.get("context"));
-        if (body.containsKey("timeout")) payload.put("timeout", body.get("timeout"));
+        if (context != null) payload.put("context", context);
+        if (timeout != null) payload.put("timeout", timeout);
 
         if (resolvedAttachments != null && !resolvedAttachments.isEmpty()) {
-            // 构造插件协议格式：{ type, mimeType, url/base64, name, size }
             List<Map<String, Object>> pluginAttachments = new ArrayList<>();
             for (AttachmentDTO att : resolvedAttachments) {
                 Map<String, Object> pa = new HashMap<>();
                 String mimeType = att.getType() != null ? att.getType() : "application/octet-stream";
-                // 按 MIME 判断大类型
                 boolean isImage = mimeType.startsWith("image/");
                 if (isImage) {
                     pa.put("type", "image");
@@ -296,7 +262,6 @@ public class ClawController {
                         String dataUrl = minioService.objectToDataUrl(att.getObjectKey(), mimeType);
                         pa.put("base64", dataUrl);
                     } catch (Exception e) {
-                        // 降级：保留 url 供插件继续尝试拉取
                         log.warn("[ClawController] 图片转base64失败，回退URL：messageId={}, objectKey={}, err={}",
                                 messageId, att.getObjectKey(), e.getMessage());
                     }
@@ -309,42 +274,30 @@ public class ClawController {
     }
 
     /**
-     * 处理附件，兼容两种方式：
-     *   1. objectKey 方式（文件已预上传）：直接拼接公开 URL
-     *   2. base64 方式（图片粘贴）：上传到 MinIO 后拼接 URL
-     *
-     * 上传失败时会在 result 中设置 success=false 和 message
-     *
-     * @return 已解析的 AttachmentDTO 列表（含 url），无附件时返回 null
+     * 处理附件，兼容 objectKey 和 base64 两种方式
      */
-    private List<AttachmentDTO> uploadAttachments(List<?> rawAttachments, String userId,
-                                                   String clawId, String messageId,
-                                                   Map<String, Object> result) {
+    private List<AttachmentDTO> uploadAttachments(List<AttachmentDTO> rawAttachments, String userId,
+                                                    String clawId, String messageId,
+                                                    Map<String, Object> result) {
         if (rawAttachments == null || rawAttachments.isEmpty()) return null;
 
         List<AttachmentDTO> resolvedList = new ArrayList<>();
 
         for (int i = 0; i < rawAttachments.size(); i++) {
-            Object rawItem = rawAttachments.get(i);
-            if (!(rawItem instanceof Map)) continue;
+            AttachmentDTO item = rawAttachments.get(i);
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> item = (Map<String, Object>) rawItem;
-
-            String objectKey = (String) item.get("objectKey");
-            String base64    = (String) item.get("base64");
-            String name      = (String) item.getOrDefault("name", "file");
-            String type      = (String) item.getOrDefault("type", "application/octet-stream");
-            Long   size      = item.get("size") instanceof Number n ? n.longValue() : null;
+            String objectKey = item.getObjectKey();
+            String base64    = item.getUrl();
+            String name      = item.getName() != null ? item.getName() : "file";
+            String type      = item.getType() != null ? item.getType() : "application/octet-stream";
+            Long   size      = item.getSize();
 
             if (objectKey != null && !objectKey.isBlank()) {
-                // ── 方式 1：文件已预上传，直接生成 URL ─────────────────────
                 String url = minioService.presignUrl(objectKey);
                 resolvedList.add(new AttachmentDTO(objectKey, url, name, type, size));
                 log.info("[ClawController] 已预上传附件：messageId={}, objectKey={}", messageId, objectKey);
 
-            } else if (base64 != null && !base64.isBlank()) {
-                // ── 方式 2：base64 图片，上传到 MinIO ──────────────────────
+            } else if (base64 != null && !base64.isBlank() && base64.startsWith("data:")) {
                 try {
                     String key = minioService.uploadBase64Image(base64, userId, clawId, messageId, i, name);
                     String url = minioService.presignUrl(key);
@@ -359,7 +312,6 @@ public class ClawController {
                     return null;
                 }
             }
-            // 两个字段都没有则跳过
         }
 
         return resolvedList.isEmpty() ? null : resolvedList;
@@ -367,11 +319,9 @@ public class ClawController {
 
     /**
      * 将 AttachmentDTO 列表序列化为存入数据库的 JSON 字符串
-     * 只存 objectKey/name/type/size，不存 url
      */
     private String toAttachmentsJson(List<AttachmentDTO> list) {
         if (list == null || list.isEmpty()) return null;
-        // 创建仅含持久化字段的副本
         List<AttachmentDTO> dbList = list.stream()
                 .map(a -> new AttachmentDTO(a.getObjectKey(), null, a.getName(), a.getType(), a.getSize()))
                 .toList();

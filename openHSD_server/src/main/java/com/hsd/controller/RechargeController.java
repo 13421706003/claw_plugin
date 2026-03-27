@@ -1,6 +1,8 @@
 package com.hsd.controller;
 
 import com.alibaba.fastjson2.JSONObject;
+import com.hsd.dto.BindKeyRequest;
+import com.hsd.dto.CreateOrderRequest;
 import com.hsd.service.OpenRouterService;
 import com.hsd.service.PaymentService;
 import com.hsd.service.RechargeService;
@@ -9,12 +11,12 @@ import com.hsd.enums.PayType;
 import com.hsd.enums.PaymentChannel;
 import com.hsd.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -71,13 +73,13 @@ public class RechargeController {
      * 绑定后才能进行充值操作。
      * 
      * @param authHeader Authorization 请求头（Bearer Token）
-     * @param body 请求体，包含 apiKey 字段
+     * @param request 绑定请求参数
      * @return 绑定结果响应
      */
     @PostMapping("/bind-key")
     public ResponseEntity<Map<String, Object>> bindKey(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestBody Map<String, String> body) {
+            @Valid @RequestBody BindKeyRequest request) {
         
         Long userId = extractUserId(authHeader);
         if (userId == null) {
@@ -87,14 +89,7 @@ public class RechargeController {
             return ResponseEntity.status(401).body(result);
         }
 
-        String apiKey = body.get("apiKey");
-        if (apiKey == null || apiKey.trim().isEmpty()) {
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", false);
-            result.put("message", "API Key 不能为空");
-            return ResponseEntity.badRequest().body(result);
-        }
-
+        String apiKey = request.getApiKey();
         Map<String, Object> result = rechargeService.bindKey(userId, apiKey.trim());
         return ResponseEntity.ok(result);
     }
@@ -122,13 +117,13 @@ public class RechargeController {
      * 支持多种支付渠道（微信、支付宝）和支付方式（Native、H5等）。
      * 
      * @param authHeader Authorization 请求头（Bearer Token）
-     * @param body 请求体，包含 amountUsd（充值金额）、paymentChannel（支付渠道）、paymentType（支付方式）
+     * @param request 创建订单请求参数
      * @return 订单信息，包含订单号、支付二维码等
      */
     @PostMapping("/create")
     public ResponseEntity<Map<String, Object>> createOrder(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestBody Map<String, Object> body) {
+            @Valid @RequestBody CreateOrderRequest request) {
         
         Long userId = extractUserId(authHeader);
         if (userId == null) {
@@ -138,36 +133,15 @@ public class RechargeController {
             return ResponseEntity.status(401).body(result);
         }
 
-        Object amountObj = body.get("amountUsd");
-        if (amountObj == null) {
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", false);
-            result.put("message", "充值金额不能为空");
-            return ResponseEntity.badRequest().body(result);
-        }
-
-        BigDecimal amountUsd;
-        try {
-            amountUsd = new BigDecimal(amountObj.toString());
-        } catch (NumberFormatException e) {
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", false);
-            result.put("message", "充值金额格式不正确");
-            return ResponseEntity.badRequest().body(result);
-        }
-
-        String channelStr = (String) body.getOrDefault("paymentChannel", "wechat");
-        String typeStr = (String) body.getOrDefault("paymentType", "NATIVE");
-        
-        PaymentChannel channel = PaymentChannel.fromCode(channelStr);
+        PaymentChannel channel = PaymentChannel.fromCode(request.getPaymentChannel());
         PayType payType;
         try {
-            payType = PayType.valueOf(typeStr.toUpperCase());
+            payType = PayType.valueOf(request.getPaymentType().toUpperCase());
         } catch (IllegalArgumentException e) {
             payType = PayType.NATIVE;
         }
 
-        Map<String, Object> result = rechargeService.createOrder(userId, amountUsd, channel, payType);
+        Map<String, Object> result = rechargeService.createOrder(userId, request.getAmountUsd(), channel, payType);
         return ResponseEntity.ok(result);
     }
 
