@@ -46,10 +46,11 @@ class _RechargePageState extends State<_RechargePage> {
     try {
       final channel = _payType == 0 ? 'wechat' : 'alipay';
       final amountUsd = _selectedAmount / _exchangeRate;
+      final paymentType = _payType == 0 ? 'NATIVE' : 'APP';
       final order = await api.createRechargeOrder(
         amountUsd: amountUsd,
         paymentChannel: channel,
-        paymentType: 'NATIVE',
+        paymentType: paymentType,
       );
       final orderNo = (order['orderNo'] ?? '').toString();
       final payload = (order['qrcodeUrl'] ?? '').toString();
@@ -61,15 +62,17 @@ class _RechargePageState extends State<_RechargePage> {
         ).showSnackBar(const SnackBar(content: Text('下单成功但未拿到可拉起的支付链接')));
         return;
       }
-      final launched = await launchUrl(
-        launchUri,
-        mode: LaunchMode.externalApplication,
-      );
+      final mode =
+          (_payType == 1 &&
+              (launchUri.scheme == 'http' || launchUri.scheme == 'https'))
+          ? LaunchMode.inAppBrowserView
+          : LaunchMode.externalApplication;
+      final launched = await launchUrl(launchUri, mode: mode);
       if (!mounted) return;
       if (!launched) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('未能拉起支付应用，请检查是否已安装微信/支付宝')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('未能打开支付页面，请稍后重试')));
       }
       await _showPayStatusDialog(
         api: api,

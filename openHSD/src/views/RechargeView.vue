@@ -61,6 +61,12 @@ const payModalVisible = ref(false)
 /** 支付二维码链接 */
 const payQrcodeUrl = ref('')
 
+/** 是否为链接跳转支付模式（用于支付宝） */
+const payRedirectMode = ref(false)
+
+/** 链接跳转支付地址 */
+const payRedirectUrl = ref('')
+
 /** 当前支付订单号 */
 const payOrderNo = ref('')
 
@@ -239,6 +245,32 @@ const handleCustomChange = (val) => {
   customAmount.value = val
 }
 
+/**
+ * 判断是否为可直接跳转的支付链接
+ *
+ * @param {string} url - 后端返回的支付链接
+ * @returns {boolean} 是否为 http/https 链接
+ */
+const isRedirectUrl = (url) => {
+  if (!url || typeof url !== 'string') return false
+  const trimmedUrl = url.trim()
+  return /^https?:\/\//i.test(trimmedUrl)
+}
+
+/**
+ * 打开支付链接（新标签页）
+ */
+const openRedirectPayPage = () => {
+  if (!isRedirectUrl(payRedirectUrl.value)) {
+    message.error('支付链接无效，请重新下单')
+    return
+  }
+  const openedWindow = window.open(payRedirectUrl.value, '_blank')
+  if (!openedWindow) {
+    message.warning('浏览器拦截了新标签页，请允许弹窗后重试')
+  }
+}
+
 // ==================== 充值支付方法 ====================
 
 /**
@@ -265,6 +297,8 @@ const handleRecharge = async () => {
     const res = await createOrder(amount, paymentChannel.value)
     if (res.success) {
       payQrcodeUrl.value = res.qrcodeUrl
+      payRedirectUrl.value = res.qrcodeUrl
+      payRedirectMode.value = paymentChannel.value === 'ali' && !res.mockMode && isRedirectUrl(res.qrcodeUrl)
       payOrderNo.value = res.orderNo
       payAmountCny.value = res.amountCny
       payAmountUsd.value = res.amountUsd
@@ -609,8 +643,18 @@ const getStatusTag = (status) => {
     >
       <div class="pay-modal-content">
         <div v-if="payStatus < 2" class="pay-qrcode">
-          <QRCode :value="payQrcodeUrl" :size="200" />
-          <p class="pay-tip">{{ mockMode ? '模拟支付模式' : (paymentChannel === 'wechat' ? '请使用微信扫码支付' : '请使用支付宝扫码支付') }}</p>
+          <template v-if="payRedirectMode">
+            <p class="pay-tip">请点击下方按钮，在新标签页完成支付宝支付</p>
+            <div class="redirect-pay-action">
+              <Button type="primary" size="large" @click="openRedirectPayPage">
+                打开支付宝支付页面
+              </Button>
+            </div>
+          </template>
+          <template v-else>
+            <QRCode :value="payQrcodeUrl" :size="200" />
+            <p class="pay-tip">{{ mockMode ? '模拟支付模式' : (paymentChannel === 'wechat' ? '请使用微信扫码支付' : '请使用支付宝扫码支付') }}</p>
+          </template>
           <div class="pay-info">
             <div class="pay-amount">
               <span class="label">支付金额：</span>
@@ -1124,6 +1168,10 @@ const getStatusTag = (status) => {
 .mock-pay-action {
   margin-top: 24px;
   text-align: center;
+}
+
+.redirect-pay-action {
+  margin-top: 16px;
 }
 
 .mock-tip {

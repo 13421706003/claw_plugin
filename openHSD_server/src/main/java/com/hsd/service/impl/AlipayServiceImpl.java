@@ -6,6 +6,7 @@ import com.alipay.api.DefaultAlipayClient;
 import com.alipay.api.AlipayApiException;
 import com.alipay.api.internal.util.AlipaySignature;
 import com.alipay.api.request.AlipayTradeAppPayRequest;
+import com.alipay.api.request.AlipayTradePagePayRequest;
 import com.alipay.api.request.AlipayTradePrecreateRequest;
 import com.alipay.api.request.AlipayTradeWapPayRequest;
 import com.alipay.api.response.AlipayTradePrecreateResponse;
@@ -66,11 +67,12 @@ public class AlipayServiceImpl implements AlipayService {
         // - APP    -> alipay.trade.app.pay（返回 orderString）
         switch (type) {
             case NATIVE:
-                return createPrecreateOrder(orderNo, amountCents, description);
+                return createH5QrcodeOrder(orderNo, amountCents, description);
             case H5:
-                return createWapOrderUrl(orderNo, amountCents, description);
+                return createH5QrcodeOrder(orderNo, amountCents, description);
+                // return createWapOrderUrl(orderNo, amountCents, description);
             case APP:
-                return createAppOrder(orderNo, amountCents, description);
+                return createWapOrderUrl(orderNo, amountCents, description);
             case JSAPI:
                 // JSAPI 需要额外的 openid 等参数，当前模型暂不支持。
                 throw new UnsupportedOperationException("暂不支持支付宝 JSAPI 支付方式");
@@ -172,6 +174,53 @@ public class AlipayServiceImpl implements AlipayService {
             return alipayClient.pageExecute(alipayRequest).getBody();
         } catch (AlipayApiException e) {
             log.error("[Alipay] 创建WAP订单失败", e);
+            throw e;
+        }
+    }
+
+    /**
+     * 创建 H5 二维码支付订单（alipay.trade.page.pay）。
+     *
+     * 参考 payment 模块的 pagePay 方案，开启 qr_pay_mode 后由支付宝收银台展示二维码。
+     * 这里统一返回可直接跳转的 URL，便于前端直接打开。
+     */
+    private String createH5QrcodeOrder(String orderNo, int amountCents, String description) throws AlipayApiException {
+        String amountCny = new BigDecimal(amountCents)
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP)
+                .toPlainString();
+
+        AlipayClient alipayClient = new DefaultAlipayClient(
+                alipayConfig.getServerUrl(),
+                alipayConfig.getAppId(),
+                alipayConfig.getPrivateKey(),
+                "json",
+                alipayConfig.getCharset(),
+                alipayConfig.getAlipayPublicKey(),
+                alipayConfig.getSignType()
+        );
+
+        AlipayTradePagePayRequest alipayRequest = new AlipayTradePagePayRequest();
+        alipayRequest.setNotifyUrl(alipayConfig.getNotifyUrl());
+        alipayRequest.setReturnUrl(alipayConfig.getReturnUrl());
+
+        JSONObject bizContent = new JSONObject();
+        bizContent.put("out_trade_no", orderNo);
+        bizContent.put("total_amount", amountCny);
+        bizContent.put("subject", description);
+        // 电脑网站支付产品码。配合 qr_pay_mode 可在支付宝收银台展示二维码。
+        bizContent.put("product_code", "FAST_INSTANT_TRADE_PAY");
+        // 0-4 不同二维码展示模式；这里默认使用前置模式，兼容主流扫码场景。
+        bizContent.put("qr_pay_mode", "1");
+        bizContent.put("timeout_express", alipayConfig.getTimeout());
+        alipayRequest.setBizContent(bizContent.toString());
+
+        try {
+            log.info("[Alipay] 创建支付宝H5二维码订单: out_trade_no={}, total_amount={}, subject={}",
+                    orderNo, amountCny, description);
+            String body = alipayClient.pageExecute(alipayRequest, "GET").getBody();
+            return extractWapPayUrl(body);
+        } catch (AlipayApiException e) {
+            log.error("[Alipay] 创建H5二维码订单失败", e);
             throw e;
         }
     }
