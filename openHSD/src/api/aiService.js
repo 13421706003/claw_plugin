@@ -14,6 +14,48 @@ let pendingBroadcastCount = 0
 
 const pendingContent = new Map()
 
+/**
+ * messageId → clawId 归属映射
+ * 收到 WebSocket 回复时，比对 currentClawId 决定是否渲染到当前视图
+ * 防止在设备1等待回复时切换到设备2，导致回复消息出现在设备2的列表里
+ */
+const messageClawMap = new Map()
+
+/** 超时兜底：messageId → timerId，60s 未收到 response 则强制完成 */
+const timeoutMap = new Map()
+const RESPONSE_TIMEOUT_MS = 60000
+
+function startResponseTimeout(messageId) {
+  clearResponseTimeout(messageId)
+  const timerId = setTimeout(() => {
+    if (!timeoutMap.has(messageId)) return
+    timeoutMap.delete(messageId)
+    const accumulated = pendingContent.get(messageId) || ''
+    console.warn(`[aiService] messageId=${messageId} 响应超时，强制关闭 loading`)
+    updateAssistantMessage(messageId, accumulated || '（响应超时）', true)
+    pendingContent.delete(messageId)
+    messageClawMap.delete(messageId)
+    if (pendingBroadcastCount > 0) {
+      pendingBroadcastCount--
+      if (pendingBroadcastCount <= 0) {
+        pendingBroadcastCount = 0
+        loading.value = false
+      }
+    } else {
+      loading.value = false
+    }
+  }, RESPONSE_TIMEOUT_MS)
+  timeoutMap.set(messageId, timerId)
+}
+
+function clearResponseTimeout(messageId) {
+  const timerId = timeoutMap.get(messageId)
+  if (timerId != null) {
+    clearTimeout(timerId)
+    timeoutMap.delete(messageId)
+  }
+}
+
 const { isConnected, connect, disconnect, setOnMessage } = useWebSocket()
 
 function getStoredUserId() {
@@ -33,15 +75,50 @@ setOnMessage((type, data) => {
   if (type === 'response_chunk') {
     const text = extractText(chunk)
     if (text) {
-      pendingContent.set(messageId, text)
-      updateAssistantMessage(messageId, text, false)
+      // 累积追加，而非替换
+      const prev = pendingContent.get(messageId) || ''
+      const accumulated = prev + text
+      pendingContent.set(messageId, accumulated)
+
+      // 归属判断：该消息不属于当前正在查看的设备，跳过渲染
+      const belongsTo = messageClawMap.get(messageId)
+      if (belongsTo && belongsTo !== currentClawId.value) {
+        console.debug(`[aiService] response_chunk 跳过渲染（当前设备=${currentClawId.value}，消息归属=${belongsTo}）`)
+        return
+      }
+
+      // streaming=true：已有内容正在流式输出，不显示 loading 转圈
+      updateAssistantMessageStreaming(messageId, accumulated)
     }
   }
 
   if (type === 'response') {
+    // 收到 final，清除超时定时器
+    clearResponseTimeout(messageId)
     const text = extractText(result) || pendingContent.get(messageId) || ''
-    updateAssistantMessage(messageId, text, true)
     pendingContent.delete(messageId)
+
+    // 归属判断：不属于当前设备，只清理状态，不渲染到当前消息列表
+    // （用户切回该设备时会通过 loadHistory 从数据库拿到完整记录）
+    const belongsTo = messageClawMap.get(messageId)
+    messageClawMap.delete(messageId)
+
+    if (belongsTo && belongsTo !== currentClawId.value) {
+      console.debug(`[aiService] response 跳过渲染（当前设备=${currentClawId.value}，消息归属=${belongsTo}）`)
+      // 仍然需要解除 loading 计数，防止广播模式计数器卡住
+      if (pendingBroadcastCount > 0) {
+        pendingBroadcastCount--
+        if (pendingBroadcastCount <= 0) {
+          pendingBroadcastCount = 0
+          loading.value = false
+        }
+      } else {
+        loading.value = false
+      }
+      return
+    }
+
+    updateAssistantMessage(messageId, text, true)
 
     // 广播模式：等所有设备都回复完才解除 loading
     if (pendingBroadcastCount > 0) {
@@ -165,12 +242,36 @@ const updateAssistantMessage = (messageId, content, isFinal) => {
   if (idx >= 0) {
     messages.value[idx].content = content
     messages.value[idx].loading = !isFinal
+    messages.value[idx].streaming = false
   } else {
     messages.value.push({
       messageId,
       role: 'assistant',
       content,
-      loading: !isFinal
+      loading: !isFinal,
+      streaming: false
+    })
+  }
+}
+
+/**
+ * 流式 chunk 到达时更新消息：
+ * - loading=false：不显示转圈动画（气泡已有内容在增量显示）
+ * - streaming=true：标记正在流式输出（用于显示闪烁光标）
+ */
+const updateAssistantMessageStreaming = (messageId, content) => {
+  const idx = messages.value.findIndex(m => m.messageId === messageId && m.role === 'assistant')
+  if (idx >= 0) {
+    messages.value[idx].content = content
+    messages.value[idx].loading = false
+    messages.value[idx].streaming = true
+  } else {
+    messages.value.push({
+      messageId,
+      role: 'assistant',
+      content,
+      loading: false,
+      streaming: true
     })
   }
 }
@@ -292,8 +393,9 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
   const messageId = nextMessageId()
 
   messages.value.push({ messageId, role: 'user', content, attachments })
-  messages.value.push({ messageId, role: 'assistant', content: '', loading: true })
+  messages.value.push({ messageId, role: 'assistant', content: '', loading: true, streaming: false })
   pendingContent.set(messageId, '')
+  messageClawMap.set(messageId, currentClawId.value)
 
   // 格式化附件：图片需要同时传 objectKey 和 base64，文档只传 objectKey
   const formattedAttachments = attachments.map(att => {
@@ -325,11 +427,18 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
 
     const data = await res.json()
     if (!data.success) {
+      clearResponseTimeout(messageId)
+      messageClawMap.delete(messageId)
       updateAssistantMessage(messageId, data.message || '发送失败', true)
       loading.value = false
+    } else {
+      // 发送成功，启动超时兜底
+      startResponseTimeout(messageId)
     }
   } catch (e) {
     console.error('[aiService] 发送失败：', e)
+    clearResponseTimeout(messageId)
+    messageClawMap.delete(messageId)
     updateAssistantMessage(messageId, '网络错误，请重试', true)
     loading.value = false
   }
@@ -383,9 +492,13 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
         role: 'assistant',
         content: '',
         loading: true,
+        streaming: false,
         clawId   // 标记来源设备
       })
       pendingContent.set(subMsgId, '')
+      // 广播模式：子消息归属 '__ALL__'，确保广播视图下始终渲染
+      messageClawMap.set(subMsgId, '__ALL__')
+      startResponseTimeout(subMsgId)
     })
 
     if (sentClawIds.length === 0) {

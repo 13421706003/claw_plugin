@@ -853,6 +853,11 @@ const bubbleItems = computed(() => {
       }
     }
 
+    // streaming=true 时在 content 末尾附加不可见标记，供 messageRender 检测
+    if (msg.streaming && !msg.loading) {
+      content = content + '\x00STREAMING'
+    }
+
     return {
       key: msg.messageId || index.toString(),
       role: msg.role,
@@ -865,12 +870,13 @@ const bubbleItems = computed(() => {
 const bubbleRoles = computed(() => ({
   assistant: {
     placement: 'start',
-    typing: { step: 5, interval: 20 },
     messageRender: (content) => {
       if (!content) return null
 
+      // 检测流式标记（streaming=true 时 bubbleItems 会在 content 末尾附加 \x00STREAMING）
+      const isStreaming = content.endsWith('\x00STREAMING')
       const children = []
-      let actualContent = content
+      let actualContent = isStreaming ? content.slice(0, -'\x00STREAMING'.length) : content
 
       // 1. 解析图片标记 <!--img:url-->（无闪烁）
       const imgTagRegex = /<!--img:([^>]*)-->/g
@@ -946,10 +952,15 @@ const bubbleRoles = computed(() => ({
         }, clawMatch[1]))
       }
 
-      // 4. 渲染剩余 Markdown 文本
+      // 4. 渲染剩余 Markdown 文本 + 流式光标
       if (actualContent.trim()) {
         const html = marked.parse(actualContent.replace(/\r\n/g, '\n'), { breaks: false, gfm: true })
         children.push(h('div', { innerHTML: html, class: 'markdown-body' }))
+      }
+
+      // 5. 流式输出时在底部显示闪烁光标
+      if (isStreaming) {
+        children.push(h('span', { class: 'streaming-cursor' }, '▌'))
       }
 
       return children.length > 0 ? h('div', {}, children) : null
@@ -1077,6 +1088,22 @@ const bubbleRoles = computed(() => ({
 
 
 <style scoped>
+/* 流式输出闪烁光标 */
+.streaming-cursor {
+  display: inline-block;
+  color: #1677ff;
+  font-weight: bold;
+  animation: blink-cursor 0.8s step-start infinite;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  line-height: 1;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 :deep(.ant-welcome) {
   padding: 24px 0;
 }
