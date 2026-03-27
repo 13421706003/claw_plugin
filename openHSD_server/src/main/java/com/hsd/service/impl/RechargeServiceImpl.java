@@ -223,7 +223,7 @@ public class RechargeServiceImpl implements RechargeService {
             return result;
         }
 
-        PaymentService paymentService = paymentServices.get(channel.getCode() + "PayService");
+        PaymentService paymentService = paymentServices.get(channel.getServiceBeanName());
         if (paymentService == null) {
             result.put("success", false);
             result.put("message", "不支持的支付渠道: " + channel.getCode());
@@ -443,7 +443,8 @@ public class RechargeServiceImpl implements RechargeService {
             return result;
         }
         
-        PaymentService paymentService = paymentServices.get(order.getPaymentChannel() + "PayService");
+        PaymentChannel orderChannel = PaymentChannel.fromCode(order.getPaymentChannel());
+        PaymentService paymentService = paymentServices.get(orderChannel.getServiceBeanName());
         if (paymentService == null || !paymentService.isMockMode()) {
             result.put("success", false);
             result.put("message", "非模拟模式，无法使用模拟支付");

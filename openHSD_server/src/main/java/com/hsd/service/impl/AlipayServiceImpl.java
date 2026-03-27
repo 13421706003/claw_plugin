@@ -29,7 +29,7 @@ import java.util.Map;
  * 支持创建支付宝支付订单与异步回调验签/解析。
  */
 @Slf4j
-@Service("aliPayService")
+@Service("alipayService")
 @RequiredArgsConstructor
 public class AlipayServiceImpl implements AlipayService {
 

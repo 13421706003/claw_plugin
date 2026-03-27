@@ -237,7 +237,7 @@ public class RechargeController {
     public ResponseEntity<Map<String, String>> wechatNotify(HttpServletRequest request) {
         log.info("[RechargeController] 收到微信支付通知");
         
-        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        PaymentService wechatPayService = paymentServices.get(PaymentChannel.WECHAT.getServiceBeanName());
         
         try {
             if (!wechatPayService.verifyNotify(request)) {
@@ -296,7 +296,7 @@ public class RechargeController {
     public ResponseEntity<Map<String, String>> alipayNotify(HttpServletRequest request) {
         log.info("[RechargeController] 收到支付宝支付通知");
         
-        PaymentService alipayService = paymentServices.get("alipayService");
+        PaymentService alipayService = paymentServices.get(PaymentChannel.ALIPAY.getServiceBeanName());
         
         try {
             if (!alipayService.verifyNotify(request)) {
@@ -360,7 +360,7 @@ public class RechargeController {
             return ResponseEntity.status(401).body(result);
         }
 
-        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        PaymentService wechatPayService = paymentServices.get(PaymentChannel.WECHAT.getServiceBeanName());
         if (!wechatPayService.isMockMode()) {
             Map<String, Object> result = new HashMap<>();
             result.put("success", false);
@@ -411,7 +411,7 @@ public class RechargeController {
         
         Map<String, Object> result = new HashMap<>();
         
-        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        PaymentService wechatPayService = paymentServices.get(PaymentChannel.WECHAT.getServiceBeanName());
         if (!wechatPayService.isMockMode()) {
             result.put("success", false);
             result.put("message", "非模拟模式，禁止访问");
@@ -450,7 +450,7 @@ public class RechargeController {
         
         Map<String, Object> result = new HashMap<>();
         
-        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        PaymentService wechatPayService = paymentServices.get(PaymentChannel.WECHAT.getServiceBeanName());
         if (!wechatPayService.isMockMode()) {
             result.put("success", false);
             result.put("message", "非模拟模式，禁止访问");
@@ -493,7 +493,7 @@ public class RechargeController {
         
         Map<String, Object> result = new HashMap<>();
         
-        PaymentService wechatPayService = paymentServices.get("wechatPayService");
+        PaymentService wechatPayService = paymentServices.get(PaymentChannel.WECHAT.getServiceBeanName());
         if (!wechatPayService.isMockMode()) {
             result.put("success", false);
             result.put("message", "非模拟模式，禁止访问");
