@@ -4,6 +4,7 @@ import ChatView from '../views/ChatView.vue'
 import ConfigView from '../views/ConfigView.vue'
 import RechargeView from '../views/RechargeView.vue'
 import TestView from '../views/TestView.vue'
+import TutorialView from '../views/TutorialView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 
@@ -45,6 +46,11 @@ const router = createRouter({
           path: 'recharge',
           name: 'Recharge',
           component: RechargeView,
+        },
+        {
+          path: 'tutorial',
+          name: 'Tutorial',
+          component: TutorialView,
         },
         {
           path: 'test',

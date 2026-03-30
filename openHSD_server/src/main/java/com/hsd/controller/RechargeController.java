@@ -113,16 +113,18 @@ public class RechargeController {
     /**
      * 创建充值订单
      * 
-     * 用户发起充值请求，系统创建支付订单并返回支付二维码。
+     * 用户发起充值请求，系统创建支付订单并返回支付二维码或跳转链接。
      * 支持多种支付渠道（微信、支付宝）和支付方式（Native、H5等）。
      * 
      * @param authHeader Authorization 请求头（Bearer Token）
+     * @param httpRequest HTTP请求（用于获取客户端IP）
      * @param request 创建订单请求参数
-     * @return 订单信息，包含订单号、支付二维码等
+     * @return 订单信息，包含订单号、支付二维码/跳转链接等
      */
     @PostMapping("/create")
     public ResponseEntity<Map<String, Object>> createOrder(
             @RequestHeader(value = "Authorization", required = false) String authHeader,
+            HttpServletRequest httpRequest,
             @Valid @RequestBody CreateOrderRequest request) {
         
         Long userId = extractUserId(authHeader);
@@ -141,7 +143,8 @@ public class RechargeController {
             payType = PayType.NATIVE;
         }
 
-        Map<String, Object> result = rechargeService.createOrder(userId, request.getAmountUsd(), channel, payType);
+        String clientIp = getClientIp(httpRequest);
+        Map<String, Object> result = rechargeService.createOrder(userId, request.getAmountUsd(), channel, payType, clientIp);
         return ResponseEntity.ok(result);
     }
 
@@ -375,6 +378,29 @@ public class RechargeController {
             log.error("[RechargeController] 解析token失败", e);
             return null;
         }
+    }
+
+    /**
+     * 获取客户端真实IP地址
+     * 
+     * 支持从代理服务器（Nginx等）获取真实IP，
+     * 依次检查 X-Forwarded-For、X-Real-IP、RemoteAddr。
+     * 
+     * @param request HTTP请求
+     * @return 客户端IP地址
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip != null ? ip : "127.0.0.1";
     }
 
     /**

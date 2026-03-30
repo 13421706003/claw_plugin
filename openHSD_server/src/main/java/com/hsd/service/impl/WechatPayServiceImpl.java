@@ -56,8 +56,24 @@ public class WechatPayServiceImpl implements WechatPayService {
      */
     @Override
     public String createOrder(String orderNo, int amountCents, String description, PayType type) throws Exception {
+        return createOrder(orderNo, amountCents, description, type, null);
+    }
+    
+    /**
+     * 创建支付订单（支持客户端IP）
+     * 
+     * @param orderNo 商户订单号
+     * @param amountCents 金额（分）
+     * @param description 订单描述
+     * @param type 支付类型（NATIVE、H5等）
+     * @param clientIp 客户端IP地址（H5支付必需）
+     * @return 支付二维码链接或跳转链接
+     * @throws Exception 创建订单失败时抛出异常
+     */
+    @Override
+    public String createOrder(String orderNo, int amountCents, String description, PayType type, String clientIp) throws Exception {
         if (isMockMode()) {
-            log.info("[WechatPay] 模拟模式：返回模拟二维码，orderNo={}", orderNo);
+            log.info("[WechatPay] 模拟模式：返回模拟支付链接，orderNo={}", orderNo);
             return "mock://pay/" + orderNo;
         }
         
@@ -65,6 +81,7 @@ public class WechatPayServiceImpl implements WechatPayService {
             case NATIVE:
                 return createNativeOrderInternal(orderNo, amountCents, description);
             case H5:
+                return createH5OrderInternal(orderNo, amountCents, description, clientIp);
             case APP:
             case JSAPI:
                 throw new UnsupportedOperationException("暂不支持的支付方式: " + type);
@@ -125,6 +142,77 @@ public class WechatPayServiceImpl implements WechatPayService {
 
             JSONObject result = JSON.parseObject(respBody);
             return result.getString("code_url");
+        }
+    }
+
+    /**
+     * 内部方法：创建 H5 支付订单
+     * 
+     * 用于手机移动端微信支付，返回跳转链接。
+     * 
+     * @param orderNo 商户订单号
+     * @param amountCents 金额（分）
+     * @param description 订单描述
+     * @param clientIp 客户端IP地址
+     * @return H5支付跳转链接
+     */
+    private String createH5OrderInternal(String orderNo, int amountCents, String description, String clientIp) throws Exception {
+        String url = "https://api.mch.weixin.qq.com/v3/pay/transactions/h5";
+        
+        if (clientIp == null || clientIp.isEmpty()) {
+            clientIp = "127.0.0.1";
+        }
+        
+        JSONObject body = new JSONObject();
+        body.put("appid", wechatPayConfig.getAppId());
+        body.put("mchid", wechatPayConfig.getMchId());
+        body.put("description", description);
+        body.put("out_trade_no", orderNo);
+        body.put("notify_url", wechatPayConfig.getNotifyUrl());
+        
+        String timeExpire = ZonedDateTime.now(ZoneOffset.of("+8"))
+            .plusMinutes(15)
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        body.put("time_expire", timeExpire);
+        
+        JSONObject amount = new JSONObject();
+        amount.put("total", amountCents);
+        amount.put("currency", "CNY");
+        body.put("amount", amount);
+        
+        JSONObject sceneInfo = new JSONObject();
+        sceneInfo.put("payer_client_ip", clientIp);
+        JSONObject h5Info = new JSONObject();
+        h5Info.put("type", "Wap");
+        sceneInfo.put("h5_info", h5Info);
+        body.put("scene_info", sceneInfo);
+
+        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+        String nonceStr = UUID.randomUUID().toString().replace("-", "");
+        String bodyStr = body.toJSONString();
+
+        String signature = generateSignature("POST", "/v3/pay/transactions/h5", timestamp, nonceStr, bodyStr);
+        String authorization = buildAuthorization(timestamp, nonceStr, signature);
+
+        Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", authorization)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Accept", "application/json")
+                .post(RequestBody.create(bodyStr, MediaType.parse("application/json")))
+                .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            String respBody = response.body().string();
+            log.info("[WechatPay] 创建H5订单响应: {}", respBody);
+            
+            if (!response.isSuccessful()) {
+                log.error("[WechatPay] 创建H5订单失败: {}", respBody);
+                throw new RuntimeException("创建H5支付订单失败: " + respBody);
+            }
+
+            JSONObject result = JSON.parseObject(respBody);
+            return result.getString("h5_url");
         }
     }
 

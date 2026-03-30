@@ -111,6 +111,7 @@ import {
   CopyOutlined,
   SyncOutlined,
   BugOutlined,
+  BookOutlined,
 } from '@ant-design/icons-vue'
 import { Button, Tooltip, theme } from 'ant-design-vue'
 import { useUserStore } from '../stores/user.js'
@@ -131,6 +132,7 @@ const navItems = [
   { key: '/chat', icon: MessageOutlined, label: '聊天' },
   { key: '/config', icon: SettingOutlined, label: '配置' },
   { key: '/recharge', icon: PayCircleOutlined, label: '充值' },
+  { key: '/tutorial', icon: BookOutlined, label: '教程' },
   { key: '/test', icon: BugOutlined, label: '测试' },
 ]
 

@@ -40,6 +40,23 @@ public interface PaymentService {
     String createOrder(String orderNo, int amountCents, String description, PayType type) throws Exception;
     
     /**
+     * 创建支付订单（支持客户端IP）
+     * 
+     * H5支付等场景需要客户端IP，使用此方法。
+     * 
+     * @param orderNo 商户订单号
+     * @param amountCents 支付金额（单位：分）
+     * @param description 商品描述
+     * @param type 支付方式
+     * @param clientIp 客户端IP地址（H5支付必需）
+     * @return 支付凭证（二维码链接、H5跳转链接等）
+     * @throws Exception 创建订单失败时抛出异常
+     */
+    default String createOrder(String orderNo, int amountCents, String description, PayType type, String clientIp) throws Exception {
+        return createOrder(orderNo, amountCents, description, type);
+    }
+    
+    /**
      * 验证支付回调签名
      * 
      * 验证回调请求是否来自真实的支付渠道服务器，防止伪造攻击。

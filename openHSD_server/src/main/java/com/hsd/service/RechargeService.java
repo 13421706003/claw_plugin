@@ -15,6 +15,20 @@ public interface RechargeService {
     Map<String, Object> createOrder(Long userId, BigDecimal amountUsd);
 
     Map<String, Object> createOrder(Long userId, BigDecimal amountUsd, PaymentChannel channel, PayType payType);
+    
+    /**
+     * 创建充值订单（支持客户端IP）
+     * 
+     * H5支付等场景需要客户端IP，使用此方法。
+     * 
+     * @param userId 用户ID
+     * @param amountUsd 充值金额（美元）
+     * @param channel 支付渠道
+     * @param payType 支付方式
+     * @param clientIp 客户端IP地址
+     * @return 订单信息
+     */
+    Map<String, Object> createOrder(Long userId, BigDecimal amountUsd, PaymentChannel channel, PayType payType, String clientIp);
 
     Map<String, Object> getOrderStatus(String orderNo);
 

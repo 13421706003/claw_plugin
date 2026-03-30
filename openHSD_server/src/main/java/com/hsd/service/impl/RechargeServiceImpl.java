@@ -154,12 +154,28 @@ public class RechargeServiceImpl implements RechargeService {
     @Override
     @Transactional
     public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd) {
-        return createOrder(userId, amountUsd, PaymentChannel.WECHAT, PayType.NATIVE);
+        return createOrder(userId, amountUsd, PaymentChannel.WECHAT, PayType.NATIVE, null);
     }
 
     @Override
     @Transactional
     public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd, PaymentChannel channel, PayType payType) {
+        return createOrder(userId, amountUsd, channel, payType, null);
+    }
+    
+    /**
+     * 创建充值订单（支持客户端IP）
+     * 
+     * @param userId 用户ID
+     * @param amountUsd 充值金额（美元）
+     * @param channel 支付渠道
+     * @param payType 支付方式
+     * @param clientIp 客户端IP地址（H5支付必需）
+     * @return 订单信息
+     */
+    @Override
+    @Transactional
+    public Map<String, Object> createOrder(Long userId, BigDecimal amountUsd, PaymentChannel channel, PayType payType, String clientIp) {
         Map<String, Object> result = new HashMap<>();
         
         User user = userMapper.findById(userId);
@@ -204,7 +220,7 @@ public class RechargeServiceImpl implements RechargeService {
         order.setPaymentType(payType.name());
 
         try {
-            String codeUrl = paymentService.createOrder(orderNo, amountCents, "OpenRouter充值-" + amountUsd + "USD", payType);
+            String codeUrl = paymentService.createOrder(orderNo, amountCents, "OpenRouter充值-" + amountUsd + "USD", payType, clientIp);
             order.setQrcodeUrl(codeUrl);
             rechargeOrderMapper.insert(order);
 
