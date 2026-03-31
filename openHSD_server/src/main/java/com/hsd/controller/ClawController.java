@@ -9,6 +9,7 @@ import com.hsd.service.MessageService;
 import com.hsd.service.MinioService;
 import com.hsd.websocket.ClawWebSocketHandler;
 import com.hsd.websocket.ClawSessionRegistry;
+import com.hsd.websocket.MessageTabRouter;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -41,17 +42,20 @@ public class ClawController {
     private final ClawWebSocketHandler  clawWebSocketHandler;
     private final MessageService        messageService;
     private final MinioService          minioService;
+    private final MessageTabRouter      messageTabRouter;
     private final Executor              broadcastExecutor;
 
     public ClawController(ClawSessionRegistry clawSessionRegistry,
                           ClawWebSocketHandler clawWebSocketHandler,
                           MessageService messageService,
                           MinioService minioService,
+                          MessageTabRouter messageTabRouter,
                           @Qualifier("broadcastExecutor") Executor broadcastExecutor) {
         this.clawSessionRegistry  = clawSessionRegistry;
         this.clawWebSocketHandler = clawWebSocketHandler;
         this.messageService       = messageService;
         this.minioService         = minioService;
+        this.messageTabRouter     = messageTabRouter;
         this.broadcastExecutor    = broadcastExecutor;
     }
 
@@ -128,6 +132,14 @@ public class ClawController {
 
         boolean sent = clawWebSocketHandler.sendToSession(cs.getWsSession(), payload.toJSONString());
 
+        // 注册消息路由：记录该消息由哪个标签页发起，响应时精准推回
+        if (sent) {
+            String tabId = request.getTabId();
+            if (tabId != null && !tabId.isBlank()) {
+                messageTabRouter.register(messageId, tabId);
+            }
+        }
+
         result.put("success",      sent);
         result.put("userId",       userId);
         result.put("messageId",    messageId);
@@ -170,6 +182,7 @@ public class ClawController {
         final List<AttachmentDTO> finalAttachments = resolvedAttachments;
         final Map<String, Object> finalContext = request.getContext();
         final Integer finalTimeout           = request.getTimeout();
+        final String finalTabId              = request.getTabId();
 
         List<CompletableFuture<BroadcastResult>> futures = sessions.stream()
                 .map(cs -> CompletableFuture.supplyAsync(() -> {
@@ -182,6 +195,11 @@ public class ClawController {
                         JSONObject payload = buildPayload(subMsgId, finalContent, finalContext, finalTimeout, finalAttachments);
                         boolean sent = clawWebSocketHandler.sendToSession(
                                 cs.getWsSession(), payload.toJSONString());
+
+                        // 注册消息路由：广播的所有子消息均路由回同一个发起标签页
+                        if (sent && finalTabId != null && !finalTabId.isBlank()) {
+                            messageTabRouter.register(subMsgId, finalTabId);
+                        }
 
                         log.info("[Broadcast] clawId={}, subMsgId={}, sent={}", clawId, subMsgId, sent);
                         return new BroadcastResult(clawId, subMsgId, sent, null);

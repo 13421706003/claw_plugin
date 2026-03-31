@@ -11,6 +11,27 @@ const isConnected = ref(false)
 let onMessage = null
 
 /**
+ * 获取或创建当前标签页的唯一 tabId。
+ * 存储在 sessionStorage，每个标签页独立，关闭后自动失效。
+ * 手机端也会生成一个 tabId，逻辑与 PC 端完全一致。
+ */
+function getOrCreateTabId() {
+  let tabId = sessionStorage.getItem('openhsd_tab_id')
+  if (!tabId) {
+    tabId = `tab_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    sessionStorage.setItem('openhsd_tab_id', tabId)
+  }
+  return tabId
+}
+
+/**
+ * 对外暴露：获取当前标签页 tabId（供 aiService 发消息时附带）
+ */
+export function getTabId() {
+  return getOrCreateTabId()
+}
+
+/**
  * 从 localStorage / sessionStorage 读取当前登录用户 ID
  */
 function getStoredUserId() {
@@ -27,7 +48,9 @@ function getStoredUserId() {
 function buildWsUrl(userId) {
   const wsBase = import.meta.env.VITE_WS_BASE
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}${wsBase}/web/${userId}`
+  const tabId = getOrCreateTabId()
+  // 格式：/ws/web/{userId}/{tabId}，服务端同时兼容旧格式 /ws/web/{userId}
+  return `${protocol}//${window.location.host}${wsBase}/web/${userId}/${tabId}`
 }
 
 export function useWebSocket() {
@@ -48,7 +71,7 @@ export function useWebSocket() {
 
     currentUserId = userId
     const url = buildWsUrl(userId)
-    console.log(`[WebWS] 正在连接：${url}（第 ${retryCount} 次尝试）`)
+    console.log(`[WebWS] 正在连接：${url}（第 ${retryCount} 次尝试，tabId=${getOrCreateTabId()}）`)
     ws = new WebSocket(url)
 
     ws.onopen = () => {
@@ -68,7 +91,7 @@ export function useWebSocket() {
           return
         }
         if (type === 'connected') {
-          console.log('[WebWS] 服务器确认连接：userId=', data.userId)
+          console.log('[WebWS] 服务器确认连接：userId=', data.userId, 'tabId=', data.tabId)
           return
         }
 

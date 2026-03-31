@@ -34,8 +34,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 .addInterceptors(clawHandshakeInterceptor)
                 .setAllowedOrigins("*");
 
-        // 前端浏览器连接
-        registry.addHandler(webWebSocketHandler, "/ws/web/*")
+        // 前端浏览器连接（支持 /ws/web/{userId} 和 /ws/web/{userId}/{tabId} 两种格式）
+        registry.addHandler(webWebSocketHandler, "/ws/web/**")
                 .addInterceptors(webHandshakeInterceptor)
                 .setAllowedOrigins("*");
     }

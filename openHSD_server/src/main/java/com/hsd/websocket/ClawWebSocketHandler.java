@@ -20,6 +20,7 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
     private final ClawSessionRegistry  clawSessionRegistry;
     private final WebSessionRegistry   webSessionRegistry;
     private final MessageService       messageService;
+    private final MessageTabRouter     messageTabRouter;
 
     // ----------------------------------------------------------------
     // 连接生命周期
@@ -149,12 +150,23 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
             }
         }
 
-        webSessionRegistry.pushToUser(userId, buildJson(
+        String payload = buildJson(
                 "type",      "response",
                 "messageId", messageId,
                 "status",    status,
                 "result",    result
-        ));
+        );
+
+        // 查路由表：精准推送给发起该请求的标签页
+        String tabId = messageTabRouter.getTabId(messageId);
+        if (tabId != null) {
+            webSessionRegistry.pushToTab(userId, tabId, payload);
+            // final response 后清理路由条目
+            messageTabRouter.remove(messageId);
+        } else {
+            // 无路由信息（旧格式兼容）：广播给该用户所有在线标签页
+            webSessionRegistry.pushToUser(userId, payload);
+        }
     }
 
     private void handleResponseChunk(WebSocketSession session, String userId, JSONObject json) {
@@ -164,12 +176,21 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
 
         log.debug("[ClawWS] chunk：userId={}，messageId={}，seq={}", userId, messageId, seq);
 
-        webSessionRegistry.pushToUser(userId, buildJson(
+        String payload = buildJson(
                 "type",      "response_chunk",
                 "messageId", messageId,
                 "chunk",     chunk,
                 "seq",       seq
-        ));
+        );
+
+        // 查路由表：精准推送给发起该请求的标签页
+        String tabId = messageTabRouter.getTabId(messageId);
+        if (tabId != null) {
+            webSessionRegistry.pushToTab(userId, tabId, payload);
+        } else {
+            // 无路由信息（旧格式兼容）：广播给该用户所有在线标签页
+            webSessionRegistry.pushToUser(userId, payload);
+        }
     }
 
     // ----------------------------------------------------------------

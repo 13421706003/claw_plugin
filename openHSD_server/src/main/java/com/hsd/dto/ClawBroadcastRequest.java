@@ -20,6 +20,9 @@ public class ClawBroadcastRequest {
 
     private String content = "";
 
+    /** 发起请求的标签页 ID，用于多标签页精准路由；为空时回退到广播给该用户所有 tab */
+    private String tabId;
+
     private List<AttachmentDTO> attachments;
 
     private Map<String, Object> context;

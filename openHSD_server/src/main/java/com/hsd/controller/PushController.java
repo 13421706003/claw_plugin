@@ -69,10 +69,11 @@ public class PushController {
         msg.put("fileSize", fileSize);
         msg.put("timestamp", System.currentTimeMillis());
 
-        boolean sent = webSessionRegistry.pushToUser(userId, msg.toJSONString());
+        int sentCount = webSessionRegistry.pushToUser(userId, msg.toJSONString());
+        boolean sent  = sentCount > 0;
 
-        log.info("[PushController] 文件推送：userId={}, clawId={}, fileUrl={}, sent={}",
-                userId, clawId, fileUrl, sent);
+        log.info("[PushController] 文件推送：userId={}, clawId={}, fileUrl={}, sentTabs={}",
+                userId, clawId, fileUrl, sentCount);
 
         return Map.of(
             "success", sent,

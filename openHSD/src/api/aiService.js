@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { useWebSocket } from './websocket.js'
+import { useWebSocket, getTabId } from './websocket.js'
 import { request, API_BASE } from './request.js'
 
 let msgCounter = 0
@@ -421,6 +421,7 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
         messageId,
         content,
         clawId: currentClawId.value,
+        tabId: getTabId(),
         attachments: formattedAttachments
       })
     })
@@ -468,6 +469,7 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
         userId,
         messageId,
         content,
+        tabId: getTabId(),
         attachments: formattedAttachments
       })
     })
