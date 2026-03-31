@@ -56,7 +56,7 @@ class _SplashPageState extends State<SplashPage> {
                   child: CircularProgressIndicator(strokeWidth: 3),
                 ),
                 const SizedBox(height: 12),
-                const Text('OPENHSD'),
+                const Text('会宝'),
               ],
             ),
           ),

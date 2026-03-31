@@ -5,14 +5,31 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/app_config.dart';
 
-typedef WsChunkCallback = void Function(String messageId, String chunk, int seq);
-typedef WsFinalCallback = void Function(String messageId, String status, String result, dynamic attachments);
+typedef WsChunkCallback =
+    void Function(String messageId, String chunk, int seq);
+typedef WsFinalCallback =
+    void Function(
+      String messageId,
+      String status,
+      String result,
+      dynamic attachments,
+    );
 typedef WsStatusCallback = void Function(bool connected);
+typedef WsFilePushCallback =
+    void Function(
+      String messageId,
+      String clawId,
+      String fileUrl,
+      String fileName,
+      String fileType,
+      int? fileSize,
+    );
 
 class WsAiClient {
   final WsChunkCallback onChunk;
   final WsFinalCallback onFinal;
   final WsStatusCallback onStatus;
+  final WsFilePushCallback? onFilePush;
 
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
@@ -22,29 +39,72 @@ class WsAiClient {
   int _retryCount = 0;
   bool _manualClose = false;
   int? _currentUserId;
+  String? _currentTabId;
 
   WsAiClient({
     required this.onChunk,
     required this.onFinal,
     required this.onStatus,
+    this.onFilePush,
   });
 
-  Future<void> connect(int userId) async {
+  Future<void> connect(int userId, {String? tabId}) async {
     _currentUserId = userId;
+    _currentTabId = tabId;
     _manualClose = false;
 
     // Already connected (or reconnecting) -> skip.
     if (_channel != null) return;
 
-    final url = '${AppConfig.wsBaseUrl}/ws/web/$userId';
+    final url = _buildWsUrl(userId, tabId: tabId);
     _connectInternal(url);
   }
 
-  void _connectInternal(String url) {
-    onStatus(true);
+  String _buildWsUrl(int userId, {String? tabId}) {
+    final base = _normalizeWsBase(AppConfig.wsBaseUrl);
+    final suffix = (tabId != null && tabId.isNotEmpty)
+        ? '/web/$userId/$tabId'
+        : '/web/$userId';
+    return '$base$suffix';
+  }
 
+  String _normalizeWsBase(String raw) {
+    var s = raw.trim();
+    if (s.endsWith('#')) s = s.substring(0, s.length - 1);
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    if (!s.contains('://')) s = 'ws://$s';
+
+    final parsed = Uri.tryParse(s);
+    if (parsed == null || parsed.host.isEmpty) {
+      return s
+          .replaceFirst(RegExp(r'^https://'), 'wss://')
+          .replaceFirst(RegExp(r'^http://'), 'ws://');
+    }
+
+    final scheme = switch (parsed.scheme) {
+      'http' => 'ws',
+      'https' => 'wss',
+      'ws' => 'ws',
+      'wss' => 'wss',
+      _ => 'wss',
+    };
+    final port = (parsed.hasPort && parsed.port > 0) ? ':${parsed.port}' : '';
+    final path = parsed.path.endsWith('/')
+        ? parsed.path.substring(0, parsed.path.length - 1)
+        : parsed.path;
+    return '$scheme://${parsed.host}$port$path';
+  }
+
+  void _connectInternal(String url) {
     _sub?.cancel();
-    _channel = WebSocketChannel.connect(Uri.parse(url));
+    try {
+      _channel = WebSocketChannel.connect(Uri.parse(url));
+    } catch (_) {
+      _handleClosed();
+      return;
+    }
 
     _sub = _channel!.stream.listen(
       (data) {
@@ -55,6 +115,10 @@ class WsAiClient {
             if (type == null) return;
 
             if (type == 'pong') return;
+            if (type == 'connected') {
+              onStatus(true);
+              return;
+            }
 
             if (type == 'response_chunk') {
               final messageId = json['messageId']?.toString() ?? '';
@@ -72,6 +136,25 @@ class WsAiClient {
               onFinal(messageId, status, result, attachments);
               return;
             }
+
+            if (type == 'file_push') {
+              final messageId = json['messageId']?.toString() ?? '';
+              final clawId = json['clawId']?.toString() ?? '';
+              final fileUrl = json['fileUrl']?.toString() ?? '';
+              final fileName = json['fileName']?.toString() ?? 'file';
+              final fileType =
+                  json['fileType']?.toString() ?? 'application/octet-stream';
+              final fileSize = (json['fileSize'] as num?)?.toInt();
+              onFilePush?.call(
+                messageId,
+                clawId,
+                fileUrl,
+                fileName,
+                fileType,
+                fileSize,
+              );
+              return;
+            }
           }
         } catch (_) {
           // Ignore non-JSON.
@@ -86,6 +169,8 @@ class WsAiClient {
       cancelOnError: true,
     );
 
+    // Treat TCP/WebSocket upgrade as online even if server doesn't emit "connected".
+    onStatus(true);
     _retryCount = 0;
     _startHeartbeat();
   }
@@ -135,7 +220,7 @@ class WsAiClient {
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(milliseconds: delayMs), () {
       _retryCount = _retryCount + 1;
-      final url = '${AppConfig.wsBaseUrl}/ws/web/$userId';
+      final url = _buildWsUrl(userId, tabId: _currentTabId);
       _connectInternal(url);
     });
   }
@@ -145,4 +230,3 @@ class WsAiClient {
     return ms > 60000 ? 60000 : ms;
   }
 }
-

@@ -375,7 +375,7 @@ class _LoginPageState extends State<LoginPage> {
                                   _buildFoot(),
                                   SizedBox(height: _rpx(context, 56)),
                                   Text(
-                                    'openHSD · 2026',
+                                    '会宝 · 2026',
                                     style: TextStyle(
                                       fontSize: _rpx(context, 22),
                                       color: _textCaption,
@@ -436,7 +436,7 @@ class _LoginPageState extends State<LoginPage> {
         ),
         SizedBox(height: _rpx(context, 36)),
         Text(
-          'OPENHSD',
+          '会宝',
           style: TextStyle(
             fontSize: _rpx(context, 40),
             fontWeight: FontWeight.w700,

@@ -28,7 +28,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'openHSD',
+      title: '会宝',
       debugShowCheckedModeBanner: false,
       initialRoute: '/',
       theme: ThemeData(

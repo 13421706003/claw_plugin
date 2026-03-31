@@ -186,11 +186,13 @@ class ApiClient {
     required String clawId,
     required String content,
     required List<Map<String, dynamic>> attachments,
+    String? tabId,
   }) async {
     final payload = {
       'userId': userId.toString(),
       'messageId': messageId,
       'clawId': clawId,
+      if (tabId != null && tabId.isNotEmpty) 'tabId': tabId,
       if (content.isNotEmpty) 'content': content,
       if (attachments.isNotEmpty) 'attachments': attachments,
     };

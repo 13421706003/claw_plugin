@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
@@ -148,6 +149,14 @@ class _ChatPageState extends State<ChatPage> {
     _scrollCtl.dispose();
     chat.dispose();
     super.dispose();
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    if (kDebugMode) {
+      unawaited(chat.reconnectWs());
+    }
   }
 
   Future<void> _onVoiceLongPressStart() async {
@@ -304,7 +313,11 @@ class _ChatPageState extends State<ChatPage> {
 
   ImageProvider _attachmentImageProvider(ChatAttachment att) {
     if (!att.isImage) return const AssetImage('assets/document.png');
-    final b64 = _dataUriToBase64(att.dataUri ?? '');
+    final data = att.dataUri ?? '';
+    if (data.startsWith('http://') || data.startsWith('https://')) {
+      return NetworkImage(data);
+    }
+    final b64 = _dataUriToBase64(data);
     if (b64.isEmpty) return const AssetImage('assets/document.png');
     try {
       return MemoryImage(base64Decode(b64));
@@ -414,7 +427,7 @@ class _ChatPageState extends State<ChatPage> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'OPENHSD',
+                                        '会宝',
                                         style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w700,
@@ -967,7 +980,7 @@ class _ChatPageState extends State<ChatPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'OPENHSD',
+                          '会宝',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -1914,6 +1927,11 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = msg.role == 'user';
+    final imageAttachments = msg.attachments
+        .where((a) => a.isImage)
+        .take(6)
+        .toList();
+    final fileAttachments = msg.attachments.where((a) => !a.isImage).toList();
 
     final bubbleDecoration = BoxDecoration(
       color: _OhsdChatTheme.bgIos,
@@ -1963,25 +1981,19 @@ class _MessageBubble extends StatelessWidget {
         if (isUser && msg.attachments.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
-            child: Wrap(
-              spacing: 3,
-              runSpacing: 3,
-              alignment: WrapAlignment.end,
-              children: msg.attachments
-                  .where((a) => a.isImage && a.dataUri != null)
-                  .take(6)
-                  .map(
-                    (att) => ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.memory(
-                        base64Decode(att.dataUri!.split(',').last),
-                        width: 60,
-                        height: 60,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  )
-                  .toList(),
+            child: _MessageAttachments(
+              isUser: isUser,
+              imageAttachments: imageAttachments,
+              fileAttachments: fileAttachments,
+            ),
+          ),
+        if (!isUser && msg.attachments.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: _MessageAttachments(
+              isUser: isUser,
+              imageAttachments: imageAttachments,
+              fileAttachments: fileAttachments,
             ),
           ),
         Container(
@@ -2020,6 +2032,135 @@ class _MessageBubble extends StatelessWidget {
           const SizedBox(width: 7),
           Expanded(child: bubbleColumn),
         ],
+      ),
+    );
+  }
+}
+
+class _MessageAttachments extends StatelessWidget {
+  final bool isUser;
+  final List<ChatAttachment> imageAttachments;
+  final List<ChatAttachment> fileAttachments;
+
+  const _MessageAttachments({
+    required this.isUser,
+    required this.imageAttachments,
+    required this.fileAttachments,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: isUser
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
+      children: [
+        if (imageAttachments.isNotEmpty)
+          Wrap(
+            spacing: 3,
+            runSpacing: 3,
+            alignment: isUser ? WrapAlignment.end : WrapAlignment.start,
+            children: imageAttachments
+                .map(
+                  (att) => ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: _MessageImageThumb(att: att),
+                  ),
+                )
+                .toList(),
+          ),
+        if (fileAttachments.isNotEmpty)
+          Padding(
+            padding: EdgeInsets.only(top: imageAttachments.isNotEmpty ? 5 : 0),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              alignment: isUser ? WrapAlignment.end : WrapAlignment.start,
+              children: fileAttachments
+                  .map((att) => _MessageFileTile(att: att))
+                  .toList(),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _MessageImageThumb extends StatelessWidget {
+  final ChatAttachment att;
+  const _MessageImageThumb({required this.att});
+
+  @override
+  Widget build(BuildContext context) {
+    final src = att.dataUri ?? att.url ?? '';
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      return Image.network(src, width: 60, height: 60, fit: BoxFit.cover);
+    }
+    if (src.startsWith('data:')) {
+      try {
+        return Image.memory(
+          base64Decode(src.split(',').last),
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+        );
+      } catch (_) {}
+    }
+    return Image.asset(
+      'assets/document.png',
+      width: 60,
+      height: 60,
+      fit: BoxFit.cover,
+    );
+  }
+}
+
+class _MessageFileTile extends StatelessWidget {
+  final ChatAttachment att;
+  const _MessageFileTile({required this.att});
+
+  Future<void> _openIfAny() async {
+    final src = att.url;
+    if (src == null || src.isEmpty) return;
+    final uri = Uri.tryParse(src);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF7F7F7),
+      borderRadius: BorderRadius.circular(7),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(7),
+        onTap: _openIfAny,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 190),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: const Color(0x12000000)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.asset('assets/document.png', width: 16, height: 16),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  att.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    color: _OhsdChatTheme.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2230,7 +2371,7 @@ class _SettingsPage extends StatelessWidget {
               style: TextStyle(color: _OhsdChatTheme.textPrimary),
             ),
             subtitle: const Text(
-              'OPENHSD 网关客户端',
+              '会宝 网关客户端',
               style: TextStyle(
                 fontSize: 12,
                 color: _OhsdChatTheme.textTertiary,
@@ -2239,7 +2380,7 @@ class _SettingsPage extends StatelessWidget {
             onTap: () {
               ScaffoldMessenger.of(
                 context,
-              ).showSnackBar(const SnackBar(content: Text('OPENHSD 网关客户端')));
+              ).showSnackBar(const SnackBar(content: Text('会宝 网关客户端')));
             },
           ),
         ],

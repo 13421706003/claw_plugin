@@ -469,7 +469,7 @@ class _RegisterPageState extends State<RegisterPage> {
                               _buildFoot(),
                               SizedBox(height: _rpx(context, 52)),
                               Text(
-                                'openHSD · 2026',
+                                '会宝 · 2026',
                                 style: TextStyle(
                                   fontSize: _rpx(context, 22),
                                   color: _textCaption,
@@ -528,7 +528,7 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
           SizedBox(height: _rpx(context, 32)),
           Text(
-            'OPENHSD',
+            '会宝',
             style: TextStyle(
               fontSize: _rpx(context, 40),
               fontWeight: FontWeight.w700,

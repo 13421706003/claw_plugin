@@ -12,10 +12,10 @@ class OpenHsdUser {
   });
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'username': username,
-        'token': token,
-      };
+    'userId': userId,
+    'username': username,
+    'token': token,
+  };
 
   static OpenHsdUser fromJson(Map<String, dynamic> json) {
     final rawUserId = json['userId'];
@@ -62,6 +62,9 @@ class ChatAttachment {
   // Documents (or non-image attachments): pre-upload objectKey.
   final String? objectKey;
 
+  // Public URL resolved by backend (history / push / ws final attachment rendering).
+  final String? url;
+
   // Documents (or non-image attachments): mimeType, used by plugin extractor.
   final String? mimeType;
 
@@ -73,6 +76,7 @@ class ChatAttachment {
     required this.isImage,
     this.dataUri,
     this.objectKey,
+    this.url,
     this.mimeType,
     this.sizeBytes,
   });
@@ -142,11 +146,11 @@ class UploadedServerFile {
       objectKey: json['objectKey']?.toString() ?? '',
       url: json['url']?.toString() ?? '',
       name: json['name']?.toString() ?? 'file',
-      mimeType: json['type']?.toString() ??
+      mimeType:
+          json['type']?.toString() ??
           json['mimeType']?.toString() ??
           'application/octet-stream',
       sizeBytes: (json['size'] as num?)?.toInt() ?? 0,
     );
   }
 }
-
