@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>openHSD Plugin</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="logo-section">
+      <div class="logo-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.5"/>
+          <circle cx="12" cy="12" r="4" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <span class="logo-name">HSDCLAW-PLUGIN</span>
+        <span class="logo-sub">PLUGIN GATEWAY</span>
+      </div>
+    </div>
+
+    <div class="env-section">
+      <label class="form-label">运行环境</label>
+      <div class="env-toggle">
+        <button class="env-btn" id="devEnvBtn" data-env="development">开发环境</button>
+        <button class="env-btn active" id="prodEnvBtn" data-env="production">生产环境</button>
+      </div>
+      <div class="env-hint" id="envHint"></div>
+    </div>
+
+    <div class="status-card">
+      <div class="status-header">服务状态</div>
+      <div class="status-items">
+        <div class="status-item">
+          <span class="status-dot" id="cloudDot"></span>
+          <span class="status-label">云端连接</span>
+          <span class="status-value" id="cloudStatus">未连接</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot" id="clawDot"></span>
+          <span class="status-label">OpenClaw</span>
+          <span class="status-value" id="clawStatus">未连接</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-group">
+        <label class="form-label">云端地址</label>
+        <input type="text" class="form-input" id="serverUrl">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">OpenClaw 地址</label>
+        <input type="text" class="form-input" id="openclawUrl">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Token</label>
+        <div class="token-field">
+          <input type="password" class="form-input token-input" id="currentToken" readonly>
+          <button class="eye-btn" id="toggleToken" title="显示/隐藏">
+            <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10-7-10-7z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <button class="link-btn" id="editTokenBtn">修改 Token</button>
+      </div>
+
+      <button class="btn btn-outline btn-full" id="saveConfigBtn">保存配置</button>
+    </div>
+
+    <div class="button-group">
+      <button class="btn btn-primary" id="startBtn">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5,3 19,12 5,21"/>
+        </svg>
+        启动服务
+      </button>
+      <button class="btn btn-secondary" id="stopBtn" disabled>
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="1"/>
+        </svg>
+        停止服务
+      </button>
+    </div>
+
+    <button class="btn btn-outline btn-full" id="logsBtn">
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14,2 14,8 20,8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      查看日志
+    </button>
+
+    <div class="version">openHSD · v2026.3.6</div>
+  </div>
+
+  <div class="modal" id="tokenModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">修改 Token</span>
+        <button class="modal-close" id="closeModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">新 Token</label>
+          <textarea class="form-textarea" id="newToken" placeholder="请输入新的 JWT Token..."></textarea>
+        </div>
+        <div class="modal-hint">留空则保持原有 Token 不变</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelModal">取消</button>
+        <button class="btn btn-primary" id="saveToken">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

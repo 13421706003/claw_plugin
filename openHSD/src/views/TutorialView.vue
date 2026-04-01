@@ -11,7 +11,7 @@ import { Image } from 'ant-design-vue'
       <div class="step-content">
         <p>
           下载地址：
-          <a href="http://huashidai1.com:9001/buckets/hsdclaw/hsdclaw_plugin/openHSD-plugin.zip" class="download-link" download>
+          <a href="http://huashidai1.com/oss/hsdclaw/hsdclaw_plugin/openHSD-plugin.zip" class="download-link" download>
             点击下载 openHSD-plugin.zip
           </a>
         </p>

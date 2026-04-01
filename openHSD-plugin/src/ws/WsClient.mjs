@@ -31,6 +31,8 @@ export class WsClient {
 
     /** 上层注册的业务消息回调：(parsedJson) => void */
     this.onMessage = null;
+    this.onOpen = null;
+    this.onClose = null;
   }
 
   // ----------------------------------------------------------------
@@ -108,7 +110,12 @@ export class WsClient {
     console.log('[WsClient] 连接成功');
     this.retryCount = 0;
     this._startHeartbeat();
-
+    
+    // 调用外部回调
+    if (typeof this.onOpen === 'function') {
+      this.onOpen();
+    }
+    
     // 重连成功后发送 sync，触发云端补偿积压消息
     // 携带 OpenClaw 的 deviceId，让后端知道是哪台机器
     this.send({
@@ -153,6 +160,11 @@ export class WsClient {
     const reasonStr = reason?.toString() || '';
     console.warn(`[WsClient] 连接关闭：code=${code}，reason=${reasonStr}`);
     this._clearTimers();
+    
+    // 调用外部回调
+    if (typeof this.onClose === 'function') {
+      this.onClose(code, reason);
+    }
 
     // 认证失败：不重连，打印明确错误
     if (AUTH_FAIL_CODES.has(code)) {
