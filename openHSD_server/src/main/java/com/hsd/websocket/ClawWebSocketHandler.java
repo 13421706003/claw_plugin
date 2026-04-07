@@ -21,6 +21,7 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
     private final WebSessionRegistry   webSessionRegistry;
     private final MessageService       messageService;
     private final MessageTabRouter     messageTabRouter;
+    private final RunIdRegistry        runIdRegistry;
 
     // ----------------------------------------------------------------
     // 连接生命周期
@@ -83,6 +84,7 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
         switch (type) {
             case "ping"           -> handlePing(session, userId, json);
             case "sync"           -> handleSync(session, userId, json);
+            case "run_started"    -> handleRunStarted(session, userId, json);
             case "response"       -> handleResponse(session, userId, json);
             case "response_chunk" -> handleResponseChunk(session, userId, json);
             default               -> log.warn("[ClawWS] 未知消息类型：type={}，userId={}", type, userId);
@@ -134,6 +136,18 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
         ));
     }
 
+    private void handleRunStarted(WebSocketSession session, String userId, JSONObject json) {
+        String messageId = json.getString("messageId");
+        String runId     = json.getString("runId");
+        String clawId    = getClawId(session);
+
+        if (messageId != null && runId != null) {
+            runIdRegistry.register(userId, clawId, messageId, runId);
+            log.info("[ClawWS] run_started: userId={}, clawId={}, messageId={}, runId={}",
+                    userId, clawId, messageId, runId);
+        }
+    }
+
     private void handleResponse(WebSocketSession session, String userId, JSONObject json) {
         String messageId = json.getString("messageId");
         String status    = json.getString("status");
@@ -166,6 +180,10 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
         } else {
             // 无路由信息（旧格式兼容）：广播给该用户所有在线标签页
             webSessionRegistry.pushToUser(userId, payload);
+        }
+
+        if (!"streaming".equals(status)) {
+            runIdRegistry.remove(userId, clawId, messageId);
         }
     }
 

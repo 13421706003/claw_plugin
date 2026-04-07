@@ -154,7 +154,7 @@
             :value="inputValue"
             @update:value="(val) => (inputValue = val)"
             @submit="onSubmit"
-            @cancel="loading = false"
+            @cancel="handleAbort"
             :loading="loading"
             :style="chatStyles.sender"
             placeholder="Message (Enter to send, Shift+Enter for line breaks, paste images/files)"
@@ -236,7 +236,7 @@ import {
   DesktopOutlined,
   ApiOutlined,
 } from '@ant-design/icons-vue'
-import { loading, messages, sendMessage, isConnected, connect, currentClawId, selectClaw, clearHistory } from '../api/aiService.js'
+import { loading, messages, sendMessage, isConnected, connect, currentClawId, selectClaw, clearHistory, abortMessage } from '../api/aiService.js'
 import { uploadFiles, validateFile, formatSize } from '../api/fileService.js'
 import { useUserStore } from '../stores/user.js'
 import { onMounted } from 'vue'
@@ -753,6 +753,15 @@ function getFileColor(mime) {
 const onCreateConversation = async () => {
   await clearHistory()
   message.info('已清空对话')
+}
+
+const handleAbort = async () => {
+  const success = await abortMessage()
+  if (success) {
+    message.info('已停止')
+  } else {
+    message.warning('停止失败')
+  }
 }
 
 const onPromptClick = (info) => {

@@ -148,6 +148,13 @@ export class OpenHSDService {
         const runId = msg.payload?.runId;
         if (runId) {
           this.runMap.set(runId, messageId);
+          
+          this.wsClient.send({
+            type: 'run_started',
+            messageId,
+            runId,
+          });
+          
           this.log('info', `任务已启动：messageId=${messageId}，runId=${runId}`);
         }
         return;
@@ -219,6 +226,29 @@ export class OpenHSDService {
 
     this.wsClient.onMessage = async (msg) => {
       this.log('info', '收到云端消息：' + JSON.stringify(msg, null, 2));
+
+      if (msg.type === 'abort') {
+        const { messageId, runId, sessionKey } = msg;
+        
+        if (!runId) {
+          this.log('warn', 'abort 请求缺少 runId');
+          return;
+        }
+
+        const abortReq = {
+          type: 'req',
+          id: this.nextReqId(),
+          method: 'chat.abort',
+          params: {
+            sessionKey: sessionKey ?? 'main',
+            runId,
+          },
+        };
+
+        this.clawClient.send(abortReq);
+        this.log('info', `已发送 chat.abort: runId=${runId}`);
+        return;
+      }
 
       if (msg.type === 'request') {
         const { messageId, content, context, attachments } = msg;

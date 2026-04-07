@@ -391,6 +391,7 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
   // 单设备模式
   loading.value = true
   const messageId = nextMessageId()
+  lastMessageId = messageId
 
   messages.value.push({ messageId, role: 'user', content, attachments })
   messages.value.push({ messageId, role: 'assistant', content: '', loading: true, streaming: false })
@@ -518,6 +519,48 @@ const clearMessages = () => {
   currentClawId.value = null
 }
 
+let lastMessageId = null
+
+const setLastMessageId = (id) => {
+  lastMessageId = id
+}
+
+const abortMessage = async () => {
+  const userId = getStoredUserId()
+  if (!userId || !lastMessageId) {
+    console.warn('[aiService] 无法中断：缺少 userId 或 messageId')
+    return false
+  }
+
+  try {
+    const res = await request('/claw/abort', {
+      method: 'POST',
+      body: JSON.stringify({
+        userId,
+        messageId: lastMessageId,
+        clawId: currentClawId.value === '__ALL__' ? null : currentClawId.value
+      })
+    })
+
+    const data = await res.json()
+    if (data.success) {
+      console.log('[aiService] 中断指令已发送')
+      clearResponseTimeout(lastMessageId)
+      pendingContent.delete(lastMessageId)
+      messageClawMap.delete(lastMessageId)
+      loading.value = false
+      pendingBroadcastCount = 0
+      return true
+    } else {
+      console.warn('[aiService] 中断失败：', data.message)
+      return false
+    }
+  } catch (e) {
+    console.error('[aiService] 中断请求失败：', e)
+    return false
+  }
+}
+
 export {
   loading,
   messages,
@@ -529,5 +572,7 @@ export {
   isConnected,
   connect,
   disconnect,
-  clearMessages
+  clearMessages,
+  abortMessage,
+  setLastMessageId
 }

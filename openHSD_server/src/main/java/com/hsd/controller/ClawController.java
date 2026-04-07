@@ -2,6 +2,7 @@ package com.hsd.controller;
 
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONObject;
+import com.hsd.dto.AbortRequest;
 import com.hsd.dto.AttachmentDTO;
 import com.hsd.dto.ClawBroadcastRequest;
 import com.hsd.dto.ClawSendRequest;
@@ -10,6 +11,8 @@ import com.hsd.service.MinioService;
 import com.hsd.websocket.ClawWebSocketHandler;
 import com.hsd.websocket.ClawSessionRegistry;
 import com.hsd.websocket.MessageTabRouter;
+import com.hsd.websocket.RunIdRegistry;
+import com.hsd.websocket.RunIdRegistry;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -44,19 +47,22 @@ public class ClawController {
     private final MinioService          minioService;
     private final MessageTabRouter      messageTabRouter;
     private final Executor              broadcastExecutor;
+    private final RunIdRegistry         runIdRegistry;
 
     public ClawController(ClawSessionRegistry clawSessionRegistry,
                           ClawWebSocketHandler clawWebSocketHandler,
                           MessageService messageService,
                           MinioService minioService,
                           MessageTabRouter messageTabRouter,
-                          @Qualifier("broadcastExecutor") Executor broadcastExecutor) {
+                          @Qualifier("broadcastExecutor") Executor broadcastExecutor,
+                          RunIdRegistry runIdRegistry) {
         this.clawSessionRegistry  = clawSessionRegistry;
         this.clawWebSocketHandler = clawWebSocketHandler;
         this.messageService       = messageService;
         this.minioService         = minioService;
         this.messageTabRouter     = messageTabRouter;
         this.broadcastExecutor    = broadcastExecutor;
+        this.runIdRegistry        = runIdRegistry;
     }
 
     private record BroadcastResult(String clawId, String subMsgId, boolean sent, String error) {}
@@ -344,5 +350,55 @@ public class ClawController {
                 .map(a -> new AttachmentDTO(a.getObjectKey(), null, a.getName(), a.getType(), a.getSize()))
                 .toList();
         return JSON.toJSONString(dbList);
+    }
+
+    @PostMapping("/abort")
+    public ResponseEntity<Map<String, Object>> abort(@Valid @RequestBody AbortRequest request) {
+        String userId    = request.getUserId();
+        String messageId = request.getMessageId();
+        String clawId    = request.getClawId();
+
+        Map<String, Object> result = new HashMap<>();
+
+        String runId;
+        if (clawId != null && !clawId.isBlank()) {
+            runId = runIdRegistry.getRunId(userId, clawId, messageId);
+        } else {
+            runId = runIdRegistry.findRunIdByMessageId(userId, messageId);
+        }
+
+        if (runId == null) {
+            result.put("success", false);
+            result.put("message", "未找到对应的运行任务，可能已完成或不存在");
+            return ResponseEntity.ok(result);
+        }
+
+        ClawSessionRegistry.ClawSession session;
+        if (clawId != null && !clawId.isBlank()) {
+            session = clawSessionRegistry.getSession(userId, clawId);
+        } else {
+            List<ClawSessionRegistry.ClawSession> sessions = clawSessionRegistry.getSessions(userId);
+            session = sessions.isEmpty() ? null : sessions.get(0);
+        }
+
+        if (session == null || !session.getWsSession().isOpen()) {
+            result.put("success", false);
+            result.put("message", "设备不在线");
+            return ResponseEntity.ok(result);
+        }
+
+        JSONObject abortMsg = new JSONObject();
+        abortMsg.put("type", "abort");
+        abortMsg.put("messageId", messageId);
+        abortMsg.put("runId", runId);
+        abortMsg.put("sessionKey", "main");
+
+        boolean sent = clawWebSocketHandler.sendToSession(session.getWsSession(), abortMsg.toJSONString());
+
+        result.put("success", sent);
+        result.put("messageId", messageId);
+        result.put("runId", runId);
+        result.put("message", sent ? "已发送中断指令" : "发送失败");
+        return ResponseEntity.ok(result);
     }
 }
