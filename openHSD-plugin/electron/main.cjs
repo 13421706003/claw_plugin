@@ -14,6 +14,7 @@ if (typeof globalThis.DOMMatrix === 'undefined') {
 const { app, Tray, Menu, BrowserWindow, dialog, ipcMain, nativeImage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { pathToFileURL } = require('url');
 
 let tray = null;
@@ -23,6 +24,9 @@ let service = null;
 let isRunning = false;
 let cloudConnected = false;
 let clawConnected = false;
+let minimizeToTray = false;
+
+const settingsPath = path.join(os.homedir(), '.openhsd', 'settings.json');
 
 const iconActive = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'tray-active.png'));
 const iconInactive = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'tray-inactive.png'));
@@ -36,6 +40,37 @@ function addLog(level, message) {
   
   if (logWindow && !logWindow.isDestroyed()) {
     logWindow.webContents.send('log', { time: Date.now(), level, message });
+  }
+}
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      const settings = JSON.parse(raw);
+      minimizeToTray = settings.minimizeToTray ?? false;
+    } else {
+      minimizeToTray = false;
+    }
+  } catch (e) {
+    minimizeToTray = false;
+  }
+  return { minimizeToTray };
+}
+
+function saveSettings(settings) {
+  try {
+    const dir = path.dirname(settingsPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+    minimizeToTray = settings.minimizeToTray ?? false;
+    addLog('info', '设置已保存');
+    return true;
+  } catch (e) {
+    addLog('error', '保存设置失败：' + e.message);
+    return false;
   }
 }
 
@@ -155,8 +190,12 @@ function createMainWindow() {
   });
 
   mainWindow.on('close', (e) => {
-    e.preventDefault();
-    mainWindow.hide();
+    if (minimizeToTray) {
+      e.preventDefault();
+      mainWindow.hide();
+    } else {
+      confirmExit();
+    }
   });
 }
 
@@ -251,6 +290,8 @@ async function confirmExit() {
 
 app.whenReady().then(async () => {
   app.setAppUserModelId('com.openhsd.plugin');
+
+  loadSettings();
 
   tray = new Tray(iconInactive);
   tray.setToolTip('openHSD Plugin');
@@ -352,4 +393,12 @@ ipcMain.handle('save-config', async (event, { env, wsUrl, openclawUrl }) => {
   fs.writeFileSync(envConfigPath, JSON.stringify(envConfig, null, 2) + '\n', 'utf-8');
   addLog('info', `配置已保存到 cj.config.${env}.json`);
   return true;
+});
+
+ipcMain.handle('get-settings', () => {
+  return loadSettings();
+});
+
+ipcMain.handle('save-settings', (event, settings) => {
+  return saveSettings(settings);
 });

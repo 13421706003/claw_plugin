@@ -8,8 +8,10 @@ import com.alipay.api.internal.util.AlipaySignature;
 import com.alipay.api.request.AlipayTradeAppPayRequest;
 import com.alipay.api.request.AlipayTradePagePayRequest;
 import com.alipay.api.request.AlipayTradePrecreateRequest;
+import com.alipay.api.request.AlipayTradeQueryRequest;
 import com.alipay.api.request.AlipayTradeWapPayRequest;
 import com.alipay.api.response.AlipayTradePrecreateResponse;
+import com.alipay.api.response.AlipayTradeQueryResponse;
 import com.hsd.config.AlipayConfig;
 import com.hsd.service.AlipayService;
 import com.hsd.dto.PaymentResult;
@@ -417,6 +419,84 @@ public class AlipayServiceImpl implements AlipayService {
     public boolean refund(String orderNo, String channelOrderId, int amountCents) {
         log.warn("[Alipay] refund 尚未实现: orderNo={}", orderNo);
         throw new UnsupportedOperationException("支付宝退款功能尚未实现");
+    }
+
+    /**
+     * 主动查询订单状态
+     * 
+     * 调用支付宝 API 查询订单的真实支付状态。
+     */
+    @Override
+    public PaymentResult queryOrder(String orderNo) {
+        if (isMockMode()) {
+            log.info("[Alipay] 模拟模式：返回未支付状态，orderNo={}", orderNo);
+            PaymentResult result = new PaymentResult();
+            result.setSuccess(false);
+            result.setOrderNo(orderNo);
+            return result;
+        }
+
+        try {
+            AlipayClient alipayClient = new DefaultAlipayClient(
+                    alipayConfig.getServerUrl(),
+                    alipayConfig.getAppId(),
+                    alipayConfig.getPrivateKey(),
+                    "json",
+                    alipayConfig.getCharset(),
+                    alipayConfig.getAlipayPublicKey(),
+                    alipayConfig.getSignType()
+            );
+
+            AlipayTradeQueryRequest queryRequest = new AlipayTradeQueryRequest();
+            JSONObject bizContent = new JSONObject();
+            bizContent.put("out_trade_no", orderNo);
+            queryRequest.setBizContent(bizContent.toString());
+
+            log.info("[Alipay] 查询订单: out_trade_no={}", orderNo);
+            AlipayTradeQueryResponse response = alipayClient.execute(queryRequest);
+            log.info("[Alipay] 查询订单响应: code={}, msg={}, tradeStatus={}",
+                    response != null ? response.getCode() : null,
+                    response != null ? response.getMsg() : null,
+                    response != null ? response.getTradeStatus() : null);
+
+            if (response == null || !response.isSuccess()) {
+                log.error("[Alipay] 查询订单失败: out_trade_no={}", orderNo);
+                return null;
+            }
+
+            String tradeStatus = response.getTradeStatus();
+            PaymentResult result = new PaymentResult();
+            result.setOrderNo(orderNo);
+            result.setChannelOrderId(response.getTradeNo());
+
+            if ("TRADE_SUCCESS".equals(tradeStatus) || "TRADE_FINISHED".equals(tradeStatus)) {
+                result.setSuccess(true);
+                result.setEventType(tradeStatus);
+                Date sendPayDate = response.getSendPayDate();
+                result.setPaidAt(sendPayDate != null 
+                    ? new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(sendPayDate) 
+                    : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
+
+                String totalAmount = response.getTotalAmount();
+                if (totalAmount != null && !totalAmount.isEmpty()) {
+                    BigDecimal amount = new BigDecimal(totalAmount);
+                    result.setAmountCents(amount.multiply(new BigDecimal("100"))
+                            .setScale(0, RoundingMode.HALF_UP)
+                            .intValue());
+                }
+
+                log.info("[Alipay] 查询订单支付成功: orderNo={}, tradeNo={}", orderNo, response.getTradeNo());
+            } else {
+                result.setSuccess(false);
+                result.setEventType(tradeStatus);
+                log.info("[Alipay] 查询订单未支付: orderNo={}, tradeStatus={}", orderNo, tradeStatus);
+            }
+
+            return result;
+        } catch (Exception e) {
+            log.error("[Alipay] 查询订单异常: orderNo={}", orderNo, e);
+            return null;
+        }
     }
 
     private static Map<String, String> getStringMap(HttpServletRequest request) {

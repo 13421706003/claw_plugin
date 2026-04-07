@@ -115,4 +115,15 @@ public interface PaymentService {
      * @return 退款是否成功
      */
     boolean refund(String orderNo, String channelOrderId, int amountCents);
+    
+    /**
+     * 主动查询订单状态
+     * 
+     * 调用支付渠道API查询订单的真实支付状态，
+     * 用于用户点击"支付完成"后主动校验支付状态。
+     * 
+     * @param orderNo 商户订单号
+     * @return 支付结果，查询失败返回 null
+     */
+    PaymentResult queryOrder(String orderNo);
 }

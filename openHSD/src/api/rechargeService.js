@@ -103,3 +103,33 @@ export async function mockPaySuccess(orderNo) {
   })
   return res.json()
 }
+
+/**
+ * 主动查询并同步订单状态
+ * 
+ * 用户点击"支付完成"后调用，系统会查询支付渠道真实状态并同步数据库。
+ * 
+ * @param {string} orderNo - 商户订单号
+ * @returns {Promise<Object>} 订单状态信息
+ */
+export async function queryOrderStatus(orderNo) {
+  const res = await request(`/recharge/query-status/${orderNo}`, {
+    method: 'POST'
+  })
+  return res.json()
+}
+
+/**
+ * 取消订单
+ * 
+ * 用户点击"已取消"后调用，关闭订单并更新状态。
+ * 
+ * @param {string} orderNo - 商户订单号
+ * @returns {Promise<Object>} 取消结果
+ */
+export async function cancelOrder(orderNo) {
+  const res = await request(`/recharge/cancel/${orderNo}`, {
+    method: 'POST'
+  })
+  return res.json()
+}

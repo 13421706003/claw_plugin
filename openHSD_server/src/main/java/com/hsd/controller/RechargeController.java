@@ -324,6 +324,63 @@ public class RechargeController {
     }
 
     /**
+     * 主动查询并同步订单状态
+     * 
+     * 用户点击"支付完成"后调用此接口，
+     * 系统会先查数据库，如果未支付则调用支付渠道API查询真实状态，
+     * 如果支付成功则同步更新数据库并分配额度。
+     * 
+     * @param authHeader Authorization 请求头（Bearer Token）
+     * @param orderNo 商户订单号
+     * @return 订单状态信息
+     */
+    @PostMapping("/query-status/{orderNo}")
+    public ResponseEntity<Map<String, Object>> queryOrderStatus(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable String orderNo) {
+        
+        Long userId = extractUserId(authHeader);
+        if (userId == null) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "未登录");
+            return ResponseEntity.status(401).body(result);
+        }
+
+        log.info("[RechargeController] 主动查询订单状态: orderNo={}, userId={}", orderNo, userId);
+        Map<String, Object> result = rechargeService.queryAndSyncOrderStatus(orderNo);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
+     * 取消订单
+     * 
+     * 用户点击"已取消"后调用此接口，
+     * 系统会关闭支付渠道订单并更新数据库状态。
+     * 
+     * @param authHeader Authorization 请求头（Bearer Token）
+     * @param orderNo 商户订单号
+     * @return 取消结果
+     */
+    @PostMapping("/cancel/{orderNo}")
+    public ResponseEntity<Map<String, Object>> cancelOrder(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @PathVariable String orderNo) {
+        
+        Long userId = extractUserId(authHeader);
+        if (userId == null) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "未登录");
+            return ResponseEntity.status(401).body(result);
+        }
+
+        log.info("[RechargeController] 取消订单: orderNo={}, userId={}", orderNo, userId);
+        Map<String, Object> result = rechargeService.cancelOrder(orderNo);
+        return ResponseEntity.ok(result);
+    }
+
+    /**
      * 模拟支付成功
      * 
      * 仅在模拟模式下可用，用于测试环境模拟支付成功流程。

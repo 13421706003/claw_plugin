@@ -6,117 +6,55 @@
  * - API Key 绑定与管理
  * - OpenRouter Key 信息展示
  * - 充值金额选择与支付
- * - 支付状态轮询
+ * - 支付完成/取消按钮
+ * - 差值轮询查询支付状态
  * - 充值历史记录展示
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { PayCircleOutlined, KeyOutlined, DollarOutlined, SwapOutlined, HistoryOutlined, QrcodeOutlined, CheckCircleOutlined, WechatOutlined, AlipayOutlined } from '@ant-design/icons-vue'
+import { PayCircleOutlined, KeyOutlined, DollarOutlined, SwapOutlined, HistoryOutlined, CheckCircleOutlined, WechatOutlined, AlipayOutlined } from '@ant-design/icons-vue'
 import { Card, Button, InputNumber, Modal, QRCode, message, Spin, Progress, Tag } from 'ant-design-vue'
-import { getKeyInfo, bindKey, createOrder, getOrderStatus, getOrderHistory, mockPaySuccess } from '../api/rechargeService.js'
+import { getKeyInfo, bindKey, createOrder, getOrderHistory, mockPaySuccess, queryOrderStatus, cancelOrder } from '../api/rechargeService.js'
 import { useUserStore } from '../stores/user.js'
 
 const userStore = useUserStore()
 
-// ==================== 状态定义 ====================
-
-/** 页面加载状态 */
 const loading = ref(false)
-
-/** API Key 详细信息 */
 const keyInfo = ref(null)
-
-/** Key 是否已绑定 */
 const bound = ref(false)
-
-/** Key 脱敏标签 */
 const keyLabel = ref('')
-
-/** 当前汇率 */
 const exchangeRate = ref(8.0)
-
-/** 选中的预设金额 */
 const selectedAmount = ref(10)
-
-/** 自定义输入金额 */
 const customAmount = ref(null)
-
-/** 支付渠道：wechat / ali */
 const paymentChannel = ref('wechat')
-
-/** 充值历史记录列表 */
 const orderHistory = ref([])
-
-/** API Key 绑定弹窗显示状态 */
 const bindModalVisible = ref(false)
-
-/** API Key 输入框内容 */
 const inputApiKey = ref('')
-
-/** 绑定按钮加载状态 */
 const bindLoading = ref(false)
-
-/** 支付弹窗显示状态 */
 const payModalVisible = ref(false)
-
-/** 支付二维码链接 */
 const payQrcodeUrl = ref('')
-
-/** 是否为链接跳转支付模式（用于支付宝） */
 const payRedirectMode = ref(false)
-
-/** 链接跳转支付地址 */
 const payRedirectUrl = ref('')
-
-/** 当前支付订单号 */
 const payOrderNo = ref('')
-
-/** 支付金额（人民币） */
 const payAmountCny = ref(0)
-
-/** 支付金额（美元） */
 const payAmountUsd = ref(0)
-
-/** 支付订单状态 */
 const payStatus = ref(0)
-
-/** 支付倒计时（秒） */
-const payCountdown = ref(300)
-
-/** 是否为模拟模式 */
 const mockMode = ref(false)
 
-/** 支付轮询定时器 */
 let payTimer = null
+let pollIndex = 0
 
-// ==================== 常量定义 ====================
-
-/** 预设充值金额选项（美元） */
+const POLL_INTERVALS = [1000, 2000, 5000, 10000, 20000, 40000, 60000]
+const alipayOrderCreated = ref(false)
 const presetAmounts = [5, 10, 20, 50, 100]
 
-// ==================== 计算属性 ====================
-
-/**
- * 当前显示的充值金额
- * 
- * 如果用户输入了自定义金额则使用自定义值，
- * 否则使用预设金额。
- */
 const displayAmount = computed(() => {
   return customAmount.value !== null ? customAmount.value : selectedAmount.value
 })
 
-/**
- * 当前显示金额对应的人民币金额
- */
 const displayAmountCny = computed(() => {
   return (displayAmount.value * exchangeRate.value).toFixed(2)
 })
 
-/**
- * API Key 使用量百分比
- * 
- * 计算已用额度占总限额的比例，用于进度条展示。
- */
 const usagePercent = computed(() => {
   if (!keyInfo.value || !keyInfo.value.limit) return 0
   const limit = keyInfo.value.limit || 0
@@ -125,33 +63,17 @@ const usagePercent = computed(() => {
   return Math.min(100, Math.round((usage / limit) * 100))
 })
 
-// ==================== 生命周期钩子 ====================
-
-/**
- * 组件挂载时加载数据
- */
 onMounted(async () => {
   await loadKeyInfo()
   await loadOrderHistory()
 })
 
-/**
- * 组件卸载时清理定时器
- */
 onUnmounted(() => {
   if (payTimer) {
-    clearInterval(payTimer)
+    clearTimeout(payTimer)
   }
 })
 
-// ==================== 数据加载方法 ====================
-
-/**
- * 加载 API Key 信息
- * 
- * 从后端获取用户绑定的 Key 信息，
- * 包括绑定状态、使用量、限额等。
- */
 const loadKeyInfo = async () => {
   loading.value = true
   try {
@@ -170,12 +92,6 @@ const loadKeyInfo = async () => {
   }
 }
 
-/**
- * 加载充值历史记录
- * 
- * 从后端获取用户的充值订单历史，
- * 用于在页面底部展示最近充值记录。
- */
 const loadOrderHistory = async () => {
   try {
     const res = await getOrderHistory(5)
@@ -187,14 +103,6 @@ const loadOrderHistory = async () => {
   }
 }
 
-// ==================== API Key 绑定方法 ====================
-
-/**
- * 处理 API Key 绑定
- * 
- * 验证用户输入的 Key 并提交到后端进行绑定。
- * 绑定成功后刷新 Key 信息显示。
- */
 const handleBindKey = async () => {
   if (!inputApiKey.value || !inputApiKey.value.trim()) {
     message.warning('请输入 API Key')
@@ -219,66 +127,21 @@ const handleBindKey = async () => {
   }
 }
 
-// ==================== 充值金额选择方法 ====================
-
-/**
- * 选择预设充值金额
- * 
- * 用户点击预设金额卡片时调用，
- * 清除自定义金额并设置选中的预设值。
- * 
- * @param {number} amount - 预设金额值
- */
 const selectAmount = (amount) => {
   selectedAmount.value = amount
   customAmount.value = null
 }
 
-/**
- * 处理自定义金额输入变化
- * 
- * 用户在自定义输入框中输入金额时调用。
- * 
- * @param {number} val - 输入的金额值
- */
 const handleCustomChange = (val) => {
   customAmount.value = val
 }
 
-/**
- * 判断是否为可直接跳转的支付链接
- *
- * @param {string} url - 后端返回的支付链接
- * @returns {boolean} 是否为 http/https 链接
- */
 const isRedirectUrl = (url) => {
   if (!url || typeof url !== 'string') return false
   const trimmedUrl = url.trim()
   return /^https?:\/\//i.test(trimmedUrl)
 }
 
-/**
- * 打开支付链接（新标签页）
- */
-const openRedirectPayPage = () => {
-  if (!isRedirectUrl(payRedirectUrl.value)) {
-    message.error('支付链接无效，请重新下单')
-    return
-  }
-  const openedWindow = window.open(payRedirectUrl.value, '_blank')
-  if (!openedWindow) {
-    message.warning('浏览器拦截了新标签页，请允许弹窗后重试')
-  }
-}
-
-// ==================== 充值支付方法 ====================
-
-/**
- * 处理充值按钮点击
- * 
- * 验证用户状态和充值金额，
- * 创建支付订单并启动支付轮询。
- */
 const handleRecharge = async () => {
   if (!bound.value) {
     message.warning('请先绑定 OpenRouter API Key')
@@ -292,22 +155,68 @@ const handleRecharge = async () => {
     return
   }
   
+  payOrderNo.value = ''
+  payQrcodeUrl.value = ''
+  payRedirectUrl.value = ''
+  payRedirectMode.value = false
+  alipayOrderCreated.value = false
+  payStatus.value = 0
+  pollIndex = 0
+  
+  if (paymentChannel.value === 'wechat') {
+    await createWechatOrder(amount)
+  } else {
+    payAmountCny.value = (amount * exchangeRate.value).toFixed(2)
+    payAmountUsd.value = amount
+    mockMode.value = false
+    payModalVisible.value = true
+  }
+}
+
+const createWechatOrder = async (amount) => {
   loading.value = true
   try {
-    const res = await createOrder(amount, paymentChannel.value)
+    const res = await createOrder(amount, 'wechat')
     if (res.success) {
       payQrcodeUrl.value = res.qrcodeUrl
-      payRedirectUrl.value = res.qrcodeUrl
-      payRedirectMode.value = paymentChannel.value === 'ali' && !res.mockMode && isRedirectUrl(res.qrcodeUrl)
       payOrderNo.value = res.orderNo
       payAmountCny.value = res.amountCny
       payAmountUsd.value = res.amountUsd
-      payStatus.value = 0
-      payCountdown.value = 300
       mockMode.value = res.mockMode || false
       payModalVisible.value = true
-      if (!mockMode.value) {
-        startPayPolling()
+    } else {
+      message.error(res.message || '创建订单失败')
+    }
+  } catch (e) {
+    message.error('创建订单失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const createAlipayOrder = async () => {
+  const amount = payAmountUsd.value
+  if (!amount || amount < 1) {
+    message.error('订单金额无效')
+    return
+  }
+  
+  loading.value = true
+  try {
+    const res = await createOrder(amount, 'ali')
+    if (res.success) {
+      payOrderNo.value = res.orderNo
+      payQrcodeUrl.value = res.qrcodeUrl
+      payRedirectUrl.value = res.qrcodeUrl
+      payRedirectMode.value = !res.mockMode && isRedirectUrl(res.qrcodeUrl)
+      mockMode.value = res.mockMode || false
+      alipayOrderCreated.value = true
+      
+      if (payRedirectMode.value) {
+        const openedWindow = window.open(payRedirectUrl.value, '_blank')
+        if (!openedWindow) {
+          message.warning('浏览器拦截了新标签页，请允许弹窗后重试')
+        }
       }
     } else {
       message.error(res.message || '创建订单失败')
@@ -319,52 +228,93 @@ const handleRecharge = async () => {
   }
 }
 
-/**
- * 启动支付状态轮询
- * 
- * 创建定时器每 3 秒查询一次订单状态，
- * 直到支付成功或超时。
- */
-const startPayPolling = () => {
+const startDiffPolling = () => {
   if (payTimer) {
-    clearInterval(payTimer)
+    clearTimeout(payTimer)
+    payTimer = null
   }
   
-  payTimer = setInterval(async () => {
-    payCountdown.value--
-    
-    if (payCountdown.value <= 0) {
-      clearInterval(payTimer)
-      payModalVisible.value = false
-      message.warning('支付超时，请重新下单')
-      return
-    }
-    
-    try {
-      const res = await getOrderStatus(payOrderNo.value)
-      if (res.success && res.status >= 2) {
-        clearInterval(payTimer)
-        payStatus.value = res.status
-        message.success('充值成功！')
-        await new Promise(resolve => setTimeout(resolve, 500))
-        await loadKeyInfo()
-        await loadOrderHistory()
-        setTimeout(() => {
-          payModalVisible.value = false
-        }, 2000)
-      }
-    } catch (e) {
-      console.error('查询订单状态失败:', e)
-    }
-  }, 3000)
+  pollIndex = 0
+  runPolling()
 }
 
-/**
- * 处理模拟支付
- * 
- * 在模拟模式下，用户点击"模拟支付成功"按钮触发此方法，
- * 直接调用后端接口完成支付流程。
- */
+const runPolling = async () => {
+  if (!payOrderNo.value || payStatus.value >= 2) {
+    return
+  }
+  
+  try {
+    const res = await queryOrderStatus(payOrderNo.value)
+    
+    if (res.success && res.status >= 2) {
+      payStatus.value = res.status
+      message.success('充值成功！')
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await loadKeyInfo()
+      await loadOrderHistory()
+      setTimeout(() => {
+        payModalVisible.value = false
+      }, 1500)
+    } else {
+      const nextInterval = POLL_INTERVALS[Math.min(pollIndex, POLL_INTERVALS.length - 1)]
+      pollIndex++
+      payTimer = setTimeout(runPolling, nextInterval)
+    }
+  } catch (e) {
+    console.error('轮询查询订单状态失败:', e)
+    const nextInterval = POLL_INTERVALS[Math.min(pollIndex, POLL_INTERVALS.length - 1)]
+    pollIndex++
+    payTimer = setTimeout(runPolling, nextInterval)
+  }
+}
+
+const handlePayComplete = async () => {
+  if (!payOrderNo.value) {
+    message.warning('订单未创建，请先完成支付')
+    return
+  }
+  
+  loading.value = true
+  try {
+    const res = await queryOrderStatus(payOrderNo.value)
+    if (res.success && res.status >= 2) {
+      payStatus.value = res.status
+      message.success('充值成功！额度已到账')
+      await new Promise(resolve => setTimeout(resolve, 500))
+      await loadKeyInfo()
+      await loadOrderHistory()
+      setTimeout(() => {
+        payModalVisible.value = false
+      }, 1500)
+    } else {
+      message.info('未检测到支付。正在持续查询中...')
+      startDiffPolling()
+    }
+  } catch (e) {
+    message.error('查询订单状态失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleCancelOrder = async () => {
+  if (!payOrderNo.value) {
+    payModalVisible.value = false
+    return
+  }
+  
+  loading.value = true
+  try {
+    await cancelOrder(payOrderNo.value)
+    message.info('订单已取消')
+  } catch (e) {
+    message.error('取消订单失败')
+  } finally {
+    loading.value = false
+    payModalVisible.value = false
+  }
+}
+
 const handleMockPay = async () => {
   if (!payOrderNo.value) {
     message.error('订单号不存在')
@@ -393,30 +343,12 @@ const handleMockPay = async () => {
   }
 }
 
-// ==================== 工具方法 ====================
-
-/**
- * 格式化时间显示
- * 
- * 将后端返回的时间字符串格式化为本地化显示。
- * 
- * @param {string} dateStr - ISO 格式的时间字符串
- * @returns {string} 本地化格式的时间字符串
- */
 const formatTime = (dateStr) => {
   if (!dateStr) return '-'
   const date = new Date(dateStr)
   return date.toLocaleString('zh-CN')
 }
 
-/**
- * 获取订单状态的标签配置
- * 
- * 根据状态码返回对应的颜色和文本。
- * 
- * @param {number} status - 订单状态码
- * @returns {Object} 包含 color 和 text 属性的对象
- */
 const getStatusTag = (status) => {
   const map = {
     0: { color: 'orange', text: '待支付' },
@@ -643,36 +575,52 @@ const getStatusTag = (status) => {
     >
       <div class="pay-modal-content">
         <div v-if="payStatus < 2" class="pay-qrcode">
-          <template v-if="payRedirectMode">
-            <p class="pay-tip">请点击下方按钮，在新标签页完成支付宝支付</p>
-            <div class="redirect-pay-action">
-              <Button type="primary" size="large" @click="openRedirectPayPage">
-                打开支付宝支付页面
-              </Button>
-            </div>
+          <template v-if="paymentChannel === 'wechat'">
+            <QRCode v-if="payQrcodeUrl" :value="payQrcodeUrl" :size="200" />
+            <p class="pay-tip">{{ mockMode ? '模拟支付模式' : '请使用微信扫码支付' }}</p>
           </template>
+          
           <template v-else>
-            <QRCode :value="payQrcodeUrl" :size="200" />
-            <p class="pay-tip">{{ mockMode ? '模拟支付模式' : (paymentChannel === 'wechat' ? '请使用微信扫码支付' : '请使用支付宝扫码支付') }}</p>
+            <template v-if="!alipayOrderCreated">
+              <p class="pay-tip">请点击下方按钮跳转支付宝完成支付</p>
+              <div class="redirect-pay-action">
+                <Button type="primary" size="large" :loading="loading" @click="createAlipayOrder">
+                  打开支付宝支付页面
+                </Button>
+              </div>
+            </template>
+            <template v-else>
+              <QRCode v-if="payQrcodeUrl && !payRedirectMode" :value="payQrcodeUrl" :size="200" />
+              <p class="pay-tip" v-if="payRedirectMode">已打开支付宝支付页面，请在完成支付后点击下方"支付完成"</p>
+              <p class="pay-tip" v-else>{{ mockMode ? '模拟支付模式' : '请使用支付宝扫码支付' }}</p>
+            </template>
           </template>
+          
           <div class="pay-info">
             <div class="pay-amount">
               <span class="label">支付金额：</span>
               <span class="value">¥{{ payAmountCny }}</span>
             </div>
-            <div class="pay-order">
+            <div class="pay-order" v-if="payOrderNo">
               <span class="label">订单号：</span>
               <span class="value">{{ payOrderNo }}</span>
             </div>
           </div>
+          
           <div v-if="mockMode" class="mock-pay-action">
             <Button type="primary" size="large" :loading="loading" @click="handleMockPay">
               模拟支付成功
             </Button>
             <p class="mock-tip">测试模式：点击按钮模拟支付成功</p>
           </div>
-          <div v-else class="pay-countdown">
-            <span>等待支付中... ({{ Math.floor(payCountdown / 60) }}:{{ String(payCountdown % 60).padStart(2, '0') }})</span>
+          
+          <div class="pay-actions" v-if="!mockMode && (paymentChannel === 'wechat' || alipayOrderCreated)">
+            <Button type="primary" size="large" :loading="loading" @click="handlePayComplete">
+              支付完成
+            </Button>
+            <Button size="large" :loading="loading" @click="handleCancelOrder">
+              已取消
+            </Button>
           </div>
         </div>
         <div v-else class="pay-success">
@@ -1144,10 +1092,11 @@ const getStatusTag = (status) => {
   color: #ff4d4f;
 }
 
-.pay-countdown {
-  margin-top: 16px;
-  font-size: 13px;
-  color: #999;
+.pay-actions {
+  margin-top: 24px;
+  display: flex;
+  gap: 16px;
+  justify-content: center;
 }
 
 .pay-success {

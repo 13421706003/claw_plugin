@@ -3,6 +3,7 @@ package com.hsd.service.impl;
 import com.alibaba.fastjson2.JSONObject;
 import com.hsd.entity.RechargeOrder;
 import com.hsd.entity.User;
+import com.hsd.dto.PaymentResult;
 import com.hsd.mapper.RechargeOrderMapper;
 import com.hsd.mapper.UserMapper;
 import com.hsd.service.OpenRouterService;
@@ -477,6 +478,126 @@ public class RechargeServiceImpl implements RechargeService {
             result.put("orderNo", orderNo);
             result.put("channelOrderId", mockChannelOrderId);
         }
+        
+        return result;
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> queryAndSyncOrderStatus(String orderNo) {
+        Map<String, Object> result = new HashMap<>();
+        
+        RechargeOrder order = rechargeOrderMapper.findByOrderNo(orderNo);
+        if (order == null) {
+            result.put("success", false);
+            result.put("message", "订单不存在");
+            return result;
+        }
+        
+        result.put("orderNo", order.getOrderNo());
+        result.put("status", order.getStatus());
+        result.put("statusText", getStatusText(order.getStatus()));
+        result.put("amountCny", order.getAmountCny());
+        result.put("amountUsd", order.getAmountUsd());
+        result.put("paymentChannel", order.getPaymentChannel());
+        
+        if (order.getStatus() >= RechargeOrder.STATUS_PAID) {
+            result.put("success", true);
+            result.put("message", "订单已支付");
+            return result;
+        }
+        
+        if (order.getStatus() == RechargeOrder.STATUS_CLOSED) {
+            result.put("success", true);
+            result.put("message", "订单已关闭");
+            return result;
+        }
+        
+        PaymentChannel channel = PaymentChannel.fromCode(order.getPaymentChannel());
+        PaymentService paymentService = paymentServices.get(channel.getServiceBeanName());
+        if (paymentService == null) {
+            result.put("success", false);
+            result.put("message", "支付渠道不支持");
+            return result;
+        }
+        
+        try {
+            log.info("[RechargeService] 主动查询订单状态: orderNo={}, channel={}", orderNo, channel.getCode());
+            PaymentResult queryResult = paymentService.queryOrder(orderNo);
+            
+            if (queryResult == null) {
+                result.put("success", true);
+                result.put("status", order.getStatus());
+                result.put("message", "查询支付渠道失败，请稍后重试");
+                return result;
+            }
+            
+            if (queryResult.isSuccess()) {
+                boolean allocated = handlePaySuccess(
+                    orderNo, 
+                    queryResult.getChannelOrderId(), 
+                    queryResult.getPaidAt()
+                );
+                
+                if (allocated) {
+                    result.put("success", true);
+                    result.put("status", RechargeOrder.STATUS_ALLOCATED);
+                    result.put("statusText", "已完成");
+                    result.put("message", "支付成功，额度已到账");
+                } else {
+                    result.put("success", true);
+                    result.put("status", RechargeOrder.STATUS_PAID);
+                    result.put("statusText", "已支付");
+                    result.put("message", "支付成功，额度分配中");
+                }
+            } else {
+                result.put("success", true);
+                result.put("status", order.getStatus());
+                result.put("message", "订单未支付");
+            }
+        } catch (Exception e) {
+            log.error("[RechargeService] 查询订单状态异常: orderNo={}", orderNo, e);
+            result.put("success", false);
+            result.put("message", "查询异常: " + e.getMessage());
+        }
+        
+        return result;
+    }
+
+    @Override
+    @Transactional
+    public Map<String, Object> cancelOrder(String orderNo) {
+        Map<String, Object> result = new HashMap<>();
+        
+        RechargeOrder order = rechargeOrderMapper.findByOrderNo(orderNo);
+        if (order == null) {
+            result.put("success", false);
+            result.put("message", "订单不存在");
+            return result;
+        }
+        
+        if (order.getStatus() != RechargeOrder.STATUS_PENDING) {
+            result.put("success", false);
+            result.put("message", "订单状态不允许取消");
+            return result;
+        }
+        
+        PaymentChannel channel = PaymentChannel.fromCode(order.getPaymentChannel());
+        PaymentService paymentService = paymentServices.get(channel.getServiceBeanName());
+        
+        if (paymentService != null && !paymentService.isMockMode()) {
+            try {
+                paymentService.closeOrder(orderNo);
+            } catch (Exception e) {
+                log.warn("[RechargeService] 关闭支付渠道订单失败: orderNo={}", orderNo, e);
+            }
+        }
+        
+        rechargeOrderMapper.updateStatus(orderNo, RechargeOrder.STATUS_CLOSED);
+        
+        result.put("success", true);
+        result.put("message", "订单已取消");
+        log.info("[RechargeService] 用户取消订单: orderNo={}", orderNo);
         
         return result;
     }

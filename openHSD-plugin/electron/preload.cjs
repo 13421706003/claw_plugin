@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLogs: () => ipcRenderer.invoke('get-logs'),
   clearLogs: () => ipcRenderer.invoke('clear-logs'),
   openLogWindow: () => ipcRenderer.invoke('open-log-window'),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   
   onStatusChange: (callback) => {
     ipcRenderer.on('status-change', (event, status) => callback(status));

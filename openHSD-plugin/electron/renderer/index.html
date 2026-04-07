@@ -99,6 +99,14 @@
       查看日志
     </button>
 
+    <button class="btn btn-outline btn-full" id="settingsBtn">
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+      </svg>
+      设置
+    </button>
+
     <div class="version">openHSD · v2026.3.6</div>
   </div>
 
@@ -118,6 +126,28 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" id="cancelModal">取消</button>
         <button class="btn btn-primary" id="saveToken">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">设置</span>
+        <button class="modal-close" id="closeSettingsModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="minimizeToTray">
+            <span class="checkbox-text">关闭窗口时最小化到托盘</span>
+          </label>
+          <div class="settings-hint">关闭后窗口将隐藏到系统托盘，服务继续运行</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancelSettingsModal">取消</button>
+        <button class="btn btn-primary" id="saveSettingsBtn">保存</button>
       </div>
     </div>
   </div>

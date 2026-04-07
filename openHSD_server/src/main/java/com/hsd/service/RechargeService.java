@@ -49,4 +49,26 @@ public interface RechargeService {
      * @param orderNo 商户订单号
      */
     void handleWechatOrderClosed(String orderNo);
+    
+    /**
+     * 主动查询并同步订单状态
+     * 
+     * 1. 先查数据库订单状态
+     * 2. 如果未支付，调用支付渠道API查询真实状态
+     * 3. 如果支付成功，同步更新数据库并分配额度
+     * 
+     * @param orderNo 商户订单号
+     * @return 包含订单状态的响应
+     */
+    Map<String, Object> queryAndSyncOrderStatus(String orderNo);
+    
+    /**
+     * 取消订单
+     * 
+     * 用户主动取消订单，调用支付渠道关闭订单并更新数据库状态。
+     * 
+     * @param orderNo 商户订单号
+     * @return 取消结果
+     */
+    Map<String, Object> cancelOrder(String orderNo);
 }

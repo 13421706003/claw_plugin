@@ -6,6 +6,7 @@ let status = {
 
 let currentEnv = 'production';
 let tokenVisible = false;
+let settings = { minimizeToTray: false };
 
 const cloudDot = document.getElementById('cloudDot');
 const clawDot = document.getElementById('clawDot');
@@ -14,6 +15,7 @@ const clawStatus = document.getElementById('clawStatus');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const logsBtn = document.getElementById('logsBtn');
+const settingsBtn = document.getElementById('settingsBtn');
 const serverUrlInput = document.getElementById('serverUrl');
 const openclawUrlInput = document.getElementById('openclawUrl');
 const currentTokenInput = document.getElementById('currentToken');
@@ -28,6 +30,11 @@ const devEnvBtn = document.getElementById('devEnvBtn');
 const prodEnvBtn = document.getElementById('prodEnvBtn');
 const envHint = document.getElementById('envHint');
 const saveConfigBtn = document.getElementById('saveConfigBtn');
+const settingsModal = document.getElementById('settingsModal');
+const closeSettingsModalBtn = document.getElementById('closeSettingsModal');
+const cancelSettingsModalBtn = document.getElementById('cancelSettingsModal');
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const minimizeToTrayCheckbox = document.getElementById('minimizeToTray');
 
 function updateUI() {
   if (status.running) {
@@ -167,6 +174,39 @@ tokenModal.addEventListener('click', (e) => {
     closeModal();
   }
 });
+
+async function loadSettings() {
+  settings = await window.electronAPI.getSettings();
+  minimizeToTrayCheckbox.checked = settings.minimizeToTray ?? false;
+}
+
+function closeSettingsModal() {
+  settingsModal.classList.remove('show');
+}
+
+settingsBtn.addEventListener('click', async () => {
+  await loadSettings();
+  settingsModal.classList.add('show');
+});
+
+closeSettingsModalBtn.addEventListener('click', closeSettingsModal);
+cancelSettingsModalBtn.addEventListener('click', closeSettingsModal);
+
+saveSettingsBtn.addEventListener('click', async () => {
+  const newSettings = {
+    minimizeToTray: minimizeToTrayCheckbox.checked
+  };
+  await window.electronAPI.saveSettings(newSettings);
+  settings = newSettings;
+  closeSettingsModal();
+});
+
+settingsModal.addEventListener('click', (e) => {
+  if (e.target === settingsModal) {
+    closeSettingsModal();
+  }
+});
+
 window.electronAPI.onStatusChange((newStatus) => {
   status = newStatus;
   updateUI();

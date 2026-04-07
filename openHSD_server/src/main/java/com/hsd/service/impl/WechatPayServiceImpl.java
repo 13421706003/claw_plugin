@@ -60,7 +60,7 @@ public class WechatPayServiceImpl implements WechatPayService {
     }
     
     /**
-     * 创建支付订单（支持客户端IP）
+     * 创建支付订单（测试 支持客户端IP）
      * 
      * @param orderNo 商户订单号
      * @param amountCents 金额（分）
@@ -449,6 +449,84 @@ public class WechatPayServiceImpl implements WechatPayService {
         } catch (Exception e) {
             log.error("[WechatPay] 退款异常: orderNo={}", orderNo, e);
             return false;
+        }
+    }
+
+    /**
+     * 主动查询订单状态
+     * 
+     * 调用微信支付 V3 API 查询订单的真实支付状态。
+     */
+    @Override
+    public PaymentResult queryOrder(String orderNo) {
+        if (isMockMode()) {
+            log.info("[WechatPay] 模拟模式：返回未支付状态，orderNo={}", orderNo);
+            PaymentResult result = new PaymentResult();
+            result.setSuccess(false);
+            result.setOrderNo(orderNo);
+            return result;
+        }
+        
+        String url = String.format(
+            "https://api.mch.weixin.qq.com/v3/pay/transactions/out-trade-no/%s?mchid=%s",
+            orderNo, wechatPayConfig.getMchId()
+        );
+        
+        String timestamp = String.valueOf(System.currentTimeMillis() / 1000);
+        String nonceStr = UUID.randomUUID().toString().replace("-", "");
+        String path = "/v3/pay/transactions/out-trade-no/" + orderNo + "?mchid=" + wechatPayConfig.getMchId();
+        
+        try {
+            String signature = generateSignature("GET", path, timestamp, nonceStr, "");
+            String authorization = buildAuthorization(timestamp, nonceStr, signature);
+            
+            Request request = new Request.Builder()
+                .url(url)
+                .addHeader("Authorization", authorization)
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Accept", "application/json")
+                .get()
+                .build();
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
+                log.info("[WechatPay] 查询订单响应: orderNo={}, response={}", orderNo, respBody);
+                
+                if (!response.isSuccessful()) {
+                    log.error("[WechatPay] 查询订单失败: orderNo={}, response={}", orderNo, respBody);
+                    return null;
+                }
+                
+                JSONObject result = JSON.parseObject(respBody);
+                String tradeState = result.getString("trade_state");
+                
+                PaymentResult paymentResult = new PaymentResult();
+                paymentResult.setOrderNo(orderNo);
+                paymentResult.setChannelOrderId(result.getString("transaction_id"));
+                
+                if ("SUCCESS".equals(tradeState)) {
+                    paymentResult.setSuccess(true);
+                    paymentResult.setEventType("TRANSACTION.SUCCESS");
+                    paymentResult.setPaidAt(result.getString("success_time"));
+                    
+                    JSONObject amountObj = result.getJSONObject("amount");
+                    if (amountObj != null) {
+                        paymentResult.setAmountCents(amountObj.getInteger("total"));
+                    }
+                    
+                    log.info("[WechatPay] 查询订单支付成功: orderNo={}, transactionId={}", 
+                        orderNo, paymentResult.getChannelOrderId());
+                } else {
+                    paymentResult.setSuccess(false);
+                    paymentResult.setEventType(tradeState);
+                    log.info("[WechatPay] 查询订单未支付: orderNo={}, tradeState={}", orderNo, tradeState);
+                }
+                
+                return paymentResult;
+            }
+        } catch (Exception e) {
+            log.error("[WechatPay] 查询订单异常: orderNo={}", orderNo, e);
+            return null;
         }
     }
 
