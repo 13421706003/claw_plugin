@@ -156,6 +156,7 @@
             @submit="onSubmit"
             @cancel="handleAbort"
             :loading="loading"
+            :disabled="loading"
             :style="chatStyles.sender"
             placeholder="Message (Enter to send, Shift+Enter for line breaks, paste images/files)"
             :header="attachments.length > 0 ? renderAttachmentHeader() : undefined"
@@ -168,6 +169,7 @@
                   size="small"
                   style="color: #8c8c8c; padding: 0 4px"
                   @click="triggerFileSelect"
+                  :disabled="loading"
                 >
                   <template #icon><PaperClipOutlined style="font-size: 16px" /></template>
                 </Button>
@@ -184,9 +186,12 @@
               gap: '8px',
             }"
           >
-            <Button @click="onCreateConversation">New session</Button>
-            <Button type="primary" danger @click="() => onSubmit(inputValue)">
+            <Button @click="onCreateConversation" :disabled="loading">New session</Button>
+            <Button v-if="!loading" type="primary" danger @click="() => onSubmit(inputValue)">
               Send
+            </Button>
+            <Button v-else type="primary" danger @click="handleAbort">
+              停止
             </Button>
           </div>
         </div>
@@ -870,7 +875,7 @@ const bubbleItems = computed(() => {
     return {
       key: msg.messageId || index.toString(),
       role: msg.role,
-      content,
+      content: msg.loading && !content ? '正在执行请稍后...' : content,
       loading: msg.loading || false,
     }
   })

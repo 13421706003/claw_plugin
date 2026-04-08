@@ -21,40 +21,7 @@ const pendingContent = new Map()
  */
 const messageClawMap = new Map()
 
-/** 超时兜底：messageId → timerId，60s 未收到 response 则强制完成 */
-const timeoutMap = new Map()
-const RESPONSE_TIMEOUT_MS = 60000
 
-function startResponseTimeout(messageId) {
-  clearResponseTimeout(messageId)
-  const timerId = setTimeout(() => {
-    if (!timeoutMap.has(messageId)) return
-    timeoutMap.delete(messageId)
-    const accumulated = pendingContent.get(messageId) || ''
-    console.warn(`[aiService] messageId=${messageId} 响应超时，强制关闭 loading`)
-    updateAssistantMessage(messageId, accumulated || '（响应超时）', true)
-    pendingContent.delete(messageId)
-    messageClawMap.delete(messageId)
-    if (pendingBroadcastCount > 0) {
-      pendingBroadcastCount--
-      if (pendingBroadcastCount <= 0) {
-        pendingBroadcastCount = 0
-        loading.value = false
-      }
-    } else {
-      loading.value = false
-    }
-  }, RESPONSE_TIMEOUT_MS)
-  timeoutMap.set(messageId, timerId)
-}
-
-function clearResponseTimeout(messageId) {
-  const timerId = timeoutMap.get(messageId)
-  if (timerId != null) {
-    clearTimeout(timerId)
-    timeoutMap.delete(messageId)
-  }
-}
 
 const { isConnected, connect, disconnect, setOnMessage } = useWebSocket()
 
@@ -93,8 +60,6 @@ setOnMessage((type, data) => {
   }
 
   if (type === 'response') {
-    // 收到 final，清除超时定时器
-    clearResponseTimeout(messageId)
     const text = extractText(result) || pendingContent.get(messageId) || ''
     pendingContent.delete(messageId)
 
@@ -429,17 +394,12 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
 
     const data = await res.json()
     if (!data.success) {
-      clearResponseTimeout(messageId)
       messageClawMap.delete(messageId)
       updateAssistantMessage(messageId, data.message || '发送失败', true)
       loading.value = false
-    } else {
-      // 发送成功，启动超时兜底
-      startResponseTimeout(messageId)
     }
   } catch (e) {
     console.error('[aiService] 发送失败：', e)
-    clearResponseTimeout(messageId)
     messageClawMap.delete(messageId)
     updateAssistantMessage(messageId, '网络错误，请重试', true)
     loading.value = false
@@ -501,7 +461,6 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
       pendingContent.set(subMsgId, '')
       // 广播模式：子消息归属 '__ALL__'，确保广播视图下始终渲染
       messageClawMap.set(subMsgId, '__ALL__')
-      startResponseTimeout(subMsgId)
     })
 
     if (sentClawIds.length === 0) {
@@ -545,7 +504,6 @@ const abortMessage = async () => {
     const data = await res.json()
     if (data.success) {
       console.log('[aiService] 中断指令已发送')
-      clearResponseTimeout(lastMessageId)
       pendingContent.delete(lastMessageId)
       messageClawMap.delete(lastMessageId)
       loading.value = false

@@ -12,6 +12,7 @@ export class OpenHSDService {
     this.wsClient = null;
     this.reqMap = new Map();
     this.runMap = new Map();
+    this.lastSentLength = new Map();
     this.reqCounter = 0;
     this.running = false;
     this.logCallbacks = [];
@@ -170,18 +171,27 @@ export class OpenHSDService {
         }
 
         if (state === 'delta') {
+          const content = message?.content ?? '';
+          const fullText = typeof content === 'string' ? content :
+                           Array.isArray(content) ? content.map(c => c.text || '').join('') : '';
+          
+          const prevLen = this.lastSentLength.get(messageId) ?? 0;
+          const chunk = fullText.slice(prevLen);
+          this.lastSentLength.set(messageId, fullText.length);
+          
           this.wsClient.send({
             type: 'response_chunk',
             messageId,
-            chunk: message?.content ?? '',
+            chunk,
             seq: seq ?? 0,
             isLast: false,
           });
-          this.log('info', `delta seq=${seq}：${message?.content ?? ''}`);
+          this.log('info', `delta seq=${seq}：${chunk}`);
           return;
         }
 
         if (state === 'final') {
+          this.lastSentLength.delete(messageId);
           this.wsClient.send({
             type: 'response',
             messageId,
@@ -195,6 +205,7 @@ export class OpenHSDService {
         }
 
         if (state === 'error') {
+          this.lastSentLength.delete(messageId);
           this.wsClient.send({
             type: 'response',
             messageId,
@@ -207,6 +218,7 @@ export class OpenHSDService {
         }
 
         if (state === 'aborted') {
+          this.lastSentLength.delete(messageId);
           this.wsClient.send({
             type: 'response',
             messageId,
@@ -389,6 +401,7 @@ export class OpenHSDService {
 
     this.reqMap.clear();
     this.runMap.clear();
+    this.lastSentLength.clear();
     this._cloudConnected = false;
     this._clawConnected = false;
     this.running = false;
