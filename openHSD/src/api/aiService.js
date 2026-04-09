@@ -329,17 +329,17 @@ const selectClaw = async (clawId) => {
 }
 
 const sendMessage = async (content, attachments = [], clawList = []) => {
-  if ((!content && attachments.length === 0) || loading.value) return
+  if ((!content && attachments.length === 0) || loading.value) return false
 
   const userId = getStoredUserId()
   if (!userId) {
     console.error('[aiService] 未登录，无法发送消息')
-    return
+    return false
   }
 
   if (!currentClawId.value) {
     console.error('[aiService] 未选择设备，无法发送消息')
-    return
+    return false
   }
 
   if (!isConnected.value) {
@@ -349,8 +349,7 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
 
   // 广播模式
   if (currentClawId.value === '__ALL__') {
-    await sendBroadcast(userId, content, attachments, clawList)
-    return
+    return await sendBroadcast(userId, content, attachments, clawList)
   }
 
   // 单设备模式
@@ -397,12 +396,15 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
       messageClawMap.delete(messageId)
       updateAssistantMessage(messageId, data.message || '发送失败', true)
       loading.value = false
+      return false
     }
+    return true
   } catch (e) {
     console.error('[aiService] 发送失败：', e)
     messageClawMap.delete(messageId)
     updateAssistantMessage(messageId, '网络错误，请重试', true)
     loading.value = false
+    return false
   }
 }
 
@@ -440,7 +442,7 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
     if (!data.success) {
       messages.value.push({ messageId, role: 'assistant', content: data.message || '广播失败', loading: false })
       loading.value = false
-      return
+      return false
     }
 
     // 为每台成功发送的设备创建 assistant 占位消息
@@ -466,10 +468,13 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
     if (sentClawIds.length === 0) {
       loading.value = false
     }
+    
+    return true
   } catch (e) {
     console.error('[aiService] 广播失败：', e)
     messages.value.push({ messageId, role: 'assistant', content: '网络错误，请重试', loading: false })
     loading.value = false
+    return false
   }
 }
 

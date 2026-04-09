@@ -151,8 +151,8 @@
           />
           <!-- 输入框 -->
           <Sender
-            :value="inputValue"
-            @update:value="(val) => (inputValue = val)"
+            :key="senderKey"
+            v-model:value="inputValue"
             @submit="onSubmit"
             @cancel="handleAbort"
             :loading="loading"
@@ -251,6 +251,7 @@ const userStore = useUserStore()
 
 // ==================== State ====================
 const inputValue = ref('')
+const senderKey = ref(0)
 const chatListRef = ref(null)
 const attachmentsOpen = ref(false)
 const attachedFiles = ref([])
@@ -485,9 +486,13 @@ const onSubmit = (val) => {
     message.error('请求正在进行中，请稍候...')
     return
   }
-  sendMessage(val, attachments.value, clawList.value)
+  const messageContent = val
+  const messageAttachments = [...attachments.value]
+  // 重置 senderKey 强制重新挂载 Sender，彻底清空其内部状态
   inputValue.value = ''
   attachments.value = []
+  senderKey.value++
+  sendMessage(messageContent, messageAttachments, clawList.value)
 }
 
 // ==================== 附件处理 ====================
