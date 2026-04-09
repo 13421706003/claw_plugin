@@ -6,7 +6,11 @@ let status = {
 
 let currentEnv = 'production';
 let tokenVisible = false;
-let settings = { minimizeToTray: false };
+let settings = { 
+  minimizeToTray: false, 
+  autostartPlugin: false, 
+  autostartOpenClaw: false 
+};
 
 const cloudDot = document.getElementById('cloudDot');
 const clawDot = document.getElementById('clawDot');
@@ -35,6 +39,8 @@ const closeSettingsModalBtn = document.getElementById('closeSettingsModal');
 const cancelSettingsModalBtn = document.getElementById('cancelSettingsModal');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const minimizeToTrayCheckbox = document.getElementById('minimizeToTray');
+const autostartPluginCheckbox = document.getElementById('autostartPlugin');
+const autostartOpenClawCheckbox = document.getElementById('autostartOpenClaw');
 
 function updateUI() {
   if (status.running) {
@@ -178,6 +184,8 @@ tokenModal.addEventListener('click', (e) => {
 async function loadSettings() {
   settings = await window.electronAPI.getSettings();
   minimizeToTrayCheckbox.checked = settings.minimizeToTray ?? false;
+  autostartPluginCheckbox.checked = settings.autostartPlugin ?? false;
+  autostartOpenClawCheckbox.checked = settings.autostartOpenClaw ?? false;
 }
 
 function closeSettingsModal() {
@@ -194,7 +202,9 @@ cancelSettingsModalBtn.addEventListener('click', closeSettingsModal);
 
 saveSettingsBtn.addEventListener('click', async () => {
   const newSettings = {
-    minimizeToTray: minimizeToTrayCheckbox.checked
+    minimizeToTray: minimizeToTrayCheckbox.checked,
+    autostartPlugin: autostartPluginCheckbox.checked,
+    autostartOpenClaw: autostartOpenClawCheckbox.checked
   };
   await window.electronAPI.saveSettings(newSettings);
   settings = newSettings;

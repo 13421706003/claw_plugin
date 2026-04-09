@@ -16,6 +16,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
+const { spawn } = require('child_process');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 
 let tray = null;
 let mainWindow = null;
@@ -25,6 +29,9 @@ let isRunning = false;
 let cloudConnected = false;
 let clawConnected = false;
 let minimizeToTray = false;
+let autostartPlugin = false;
+let autostartOpenClaw = false;
+let openClawProcess = null;
 
 const settingsPath = path.join(os.homedir(), '.openhsd', 'settings.json');
 
@@ -49,13 +56,19 @@ function loadSettings() {
       const raw = fs.readFileSync(settingsPath, 'utf8');
       const settings = JSON.parse(raw);
       minimizeToTray = settings.minimizeToTray ?? false;
+      autostartPlugin = settings.autostartPlugin ?? false;
+      autostartOpenClaw = settings.autostartOpenClaw ?? false;
     } else {
       minimizeToTray = false;
+      autostartPlugin = false;
+      autostartOpenClaw = false;
     }
   } catch (e) {
     minimizeToTray = false;
+    autostartPlugin = false;
+    autostartOpenClaw = false;
   }
-  return { minimizeToTray };
+  return { minimizeToTray, autostartPlugin, autostartOpenClaw };
 }
 
 function saveSettings(settings) {
@@ -66,12 +79,128 @@ function saveSettings(settings) {
     }
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
     minimizeToTray = settings.minimizeToTray ?? false;
+    autostartPlugin = settings.autostartPlugin ?? false;
+    autostartOpenClaw = settings.autostartOpenClaw ?? false;
     addLog('info', '设置已保存');
     return true;
   } catch (e) {
     addLog('error', '保存设置失败：' + e.message);
     return false;
   }
+}
+
+const REG_KEY = 'openHSD-Plugin';
+const REG_PATH = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+
+async function getAutostartEnabled() {
+  if (process.platform !== 'win32') return false;
+  
+  try {
+    const { stdout } = await execAsync(
+      `powershell -Command "Get-ItemProperty -Path '${REG_PATH}' -Name '${REG_KEY}' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ${REG_KEY}"`
+    );
+    return stdout.trim().length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function setAutostartEnabled(enabled) {
+  if (process.platform !== 'win32') return false;
+  
+  try {
+    if (enabled) {
+      const exePath = process.execPath;
+      const appPath = path.join(__dirname, 'main.cjs');
+      const value = `"${exePath}" "${appPath}" --autostart --start-service`;
+      
+      await execAsync(
+        `powershell -Command "Set-ItemProperty -Path '${REG_PATH}' -Name '${REG_KEY}' -Value '${value}'"`
+      );
+      addLog('info', '已开启开机自启动');
+    } else {
+      await execAsync(
+        `powershell -Command "Remove-ItemProperty -Path '${REG_PATH}' -Name '${REG_KEY}' -ErrorAction SilentlyContinue"`
+      );
+      addLog('info', '已关闭开机自启动');
+    }
+    return true;
+  } catch (e) {
+    addLog('error', '设置自启动失败：' + e.message);
+    return false;
+  }
+}
+
+async function checkOpenClawInstalled() {
+  try {
+    await execAsync('where openclaw');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function killExistingOpenClaw() {
+  try {
+    const { stdout } = await execAsync('tasklist /fi "IMAGENAME eq openclaw.exe" /fo csv /nh');
+    if (stdout.includes('openclaw.exe')) {
+      await execAsync('taskkill /f /im openclaw.exe');
+      await new Promise(r => setTimeout(r, 1000));
+      addLog('info', '已关闭已运行的 OpenClaw 实例');
+    }
+  } catch (e) {
+    // 无已运行实例，忽略
+  }
+}
+
+async function startOpenClaw() {
+  addLog('info', '正在检查 OpenClaw 安装状态...');
+
+  const installed = await checkOpenClawInstalled();
+  if (!installed) {
+    addLog('error', 'OpenClaw 未安装或不在系统 PATH 中，请先安装 OpenClaw');
+    return false;
+  }
+
+  addLog('info', '正在检查并关闭已运行的 OpenClaw 实例...');
+  await killExistingOpenClaw();
+
+  addLog('info', '正在启动 OpenClaw gateway...');
+
+  try {
+    const child = spawn('cmd.exe', ['/c', 'start', 'cmd', '/k', 'openclaw gateway'], {
+      detached: true,
+      stdio: 'ignore',
+      shell: false
+    });
+    child.unref();
+    openClawProcess = child;
+    addLog('info', 'OpenClaw gateway 已在新窗口中启动');
+    return true;
+  } catch (e) {
+    addLog('error', 'OpenClaw 启动异常：' + e.message);
+    openClawProcess = null;
+    return false;
+  }
+}
+
+async function stopOpenClaw() {
+  addLog('info', '正在停止 OpenClaw...');
+  try {
+    await execAsync('taskkill /f /im openclaw.exe');
+    addLog('info', 'OpenClaw 已停止');
+  } catch (e) {
+    addLog('info', 'OpenClaw 未在运行');
+  }
+  openClawProcess = null;
+}
+
+function isAutostartMode() {
+  return process.argv.includes('--autostart');
+}
+
+function shouldAutoStartService() {
+  return process.argv.includes('--start-service');
 }
 
 function getCurrentEnv() {
@@ -285,13 +414,17 @@ async function confirmExit() {
     if (response === 1) return;
     stopService();
   }
+  await stopOpenClaw();
   app.exit(0);
 }
 
 app.whenReady().then(async () => {
   app.setAppUserModelId('com.openhsd.plugin');
 
-  loadSettings();
+  const settings = loadSettings();
+  
+  const regEnabled = await getAutostartEnabled();
+  autostartPlugin = regEnabled;
 
   tray = new Tray(iconInactive);
   tray.setToolTip('openHSD Plugin');
@@ -303,8 +436,28 @@ app.whenReady().then(async () => {
   updateTrayMenu();
   
   addLog('info', 'openHSD Plugin 已启动');
-
-  createMainWindow();
+  
+  if (isAutostartMode()) {
+    addLog('info', '检测到开机自启动模式');
+    
+    if (settings.autostartOpenClaw) {
+      addLog('info', '正在启动 OpenClaw...');
+      const clawStarted = await startOpenClaw();
+      if (!clawStarted) {
+        addLog('warn', 'OpenClaw 启动失败，插件服务将继续启动');
+      }
+    }
+    
+    if (shouldAutoStartService()) {
+      addLog('info', '正在自动启动服务...');
+      setCurrentEnv('production');
+      await startService();
+    }
+    
+    createMainWindow();
+  } else {
+    createMainWindow();
+  }
 });
 
 app.on('window-all-closed', (e) => {
@@ -395,10 +548,47 @@ ipcMain.handle('save-config', async (event, { env, wsUrl, openclawUrl }) => {
   return true;
 });
 
-ipcMain.handle('get-settings', () => {
-  return loadSettings();
+ipcMain.handle('get-settings', async () => {
+  const regEnabled = await getAutostartEnabled();
+  const settings = loadSettings();
+  return {
+    ...settings,
+    autostartPlugin: regEnabled
+  };
 });
 
-ipcMain.handle('save-settings', (event, settings) => {
-  return saveSettings(settings);
+ipcMain.handle('save-settings', async (event, settings) => {
+  const result = saveSettings(settings);
+  
+  if (settings.autostartPlugin !== undefined) {
+    await setAutostartEnabled(settings.autostartPlugin);
+  }
+  
+  return result;
+});
+
+ipcMain.handle('get-autostart-status', async () => {
+  const regEnabled = await getAutostartEnabled();
+  return {
+    plugin: regEnabled,
+    openClaw: autostartOpenClaw
+  };
+});
+
+ipcMain.handle('start-openclaw', async () => {
+  return await startOpenClaw();
+});
+
+ipcMain.handle('stop-openclaw', async () => {
+  await stopOpenClaw();
+  return true;
+});
+
+ipcMain.handle('get-openclaw-status', async () => {
+  try {
+    const { stdout } = await execAsync('tasklist /fi "IMAGENAME eq openclaw.exe" /fo csv /nh');
+    return stdout.includes('openclaw.exe');
+  } catch (e) {
+    return false;
+  }
 });

@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openLogWindow: () => ipcRenderer.invoke('open-log-window'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  getAutostartStatus: () => ipcRenderer.invoke('get-autostart-status'),
+  startOpenClaw: () => ipcRenderer.invoke('start-openclaw'),
+  stopOpenClaw: () => ipcRenderer.invoke('stop-openclaw'),
+  getOpenClawStatus: () => ipcRenderer.invoke('get-openclaw-status'),
   
   onStatusChange: (callback) => {
     ipcRenderer.on('status-change', (event, status) => callback(status));

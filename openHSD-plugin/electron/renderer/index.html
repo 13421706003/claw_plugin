@@ -144,6 +144,22 @@
           </label>
           <div class="settings-hint">关闭后窗口将隐藏到系统托盘，服务继续运行</div>
         </div>
+        <div class="settings-divider"></div>
+        <div class="settings-section-title">开机自启动</div>
+        <div class="settings-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="autostartPlugin">
+            <span class="checkbox-text">开机自启动插件</span>
+          </label>
+          <div class="settings-hint">开机后自动启动插件并运行生产环境服务</div>
+        </div>
+        <div class="settings-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="autostartOpenClaw">
+            <span class="checkbox-text">开机自启动 OpenClaw</span>
+          </label>
+          <div class="settings-hint">开机后自动启动 OpenClaw gateway（需要 OpenClaw 已安装并添加到 PATH）</div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="cancelSettingsModal">取消</button>
