@@ -160,6 +160,15 @@
           </label>
           <div class="settings-hint">开机后自动启动 OpenClaw gateway（需要 OpenClaw 已安装并添加到 PATH）</div>
         </div>
+        <div class="settings-divider"></div>
+        <div class="settings-section-title">Token 管理</div>
+        <div class="settings-item">
+          <label class="checkbox-label">
+            <input type="checkbox" id="fetchTokenOnStartup" checked>
+            <span class="checkbox-text">启动时从 Redis 获取 Token</span>
+          </label>
+          <div class="settings-hint">插件启动时自动从 Redis 中获取 Token（需要配置 Redis 连接）</div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="cancelSettingsModal">取消</button>

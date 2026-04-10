@@ -31,6 +31,7 @@ let clawConnected = false;
 let minimizeToTray = false;
 let autostartPlugin = false;
 let autostartOpenClaw = false;
+let fetchTokenOnStartup = true;
 let openClawProcess = null;
 
 const settingsPath = path.join(os.homedir(), '.openhsd', 'settings.json');
@@ -58,17 +59,20 @@ function loadSettings() {
       minimizeToTray = settings.minimizeToTray ?? false;
       autostartPlugin = settings.autostartPlugin ?? false;
       autostartOpenClaw = settings.autostartOpenClaw ?? false;
+      fetchTokenOnStartup = settings.fetchTokenOnStartup ?? true;
     } else {
       minimizeToTray = false;
       autostartPlugin = false;
       autostartOpenClaw = false;
+      fetchTokenOnStartup = true;
     }
   } catch (e) {
     minimizeToTray = false;
     autostartPlugin = false;
     autostartOpenClaw = false;
+    fetchTokenOnStartup = true;
   }
-  return { minimizeToTray, autostartPlugin, autostartOpenClaw };
+  return { minimizeToTray, autostartPlugin, autostartOpenClaw, fetchTokenOnStartup };
 }
 
 function saveSettings(settings) {
@@ -81,6 +85,7 @@ function saveSettings(settings) {
     minimizeToTray = settings.minimizeToTray ?? false;
     autostartPlugin = settings.autostartPlugin ?? false;
     autostartOpenClaw = settings.autostartOpenClaw ?? false;
+    fetchTokenOnStartup = settings.fetchTokenOnStartup ?? true;
     addLog('info', '设置已保存');
     return true;
   } catch (e) {
@@ -482,8 +487,8 @@ app.whenReady().then(async () => {
   
   addLog('info', 'openHSD Plugin 已启动');
   
-  // 从 Redis 获取 token（仅非自启动模式）
-  if (!isAutostartMode()) {
+  // 从 Redis 获取 token（仅非自启动模式且开关开启时）
+  if (!isAutostartMode() && fetchTokenOnStartup) {
     await fetchTokenFromRedis();
   }
   

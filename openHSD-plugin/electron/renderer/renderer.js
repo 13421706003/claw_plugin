@@ -9,7 +9,8 @@ let tokenVisible = false;
 let settings = { 
   minimizeToTray: false, 
   autostartPlugin: false, 
-  autostartOpenClaw: false 
+  autostartOpenClaw: false,
+  fetchTokenOnStartup: true
 };
 
 const cloudDot = document.getElementById('cloudDot');
@@ -41,6 +42,7 @@ const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const minimizeToTrayCheckbox = document.getElementById('minimizeToTray');
 const autostartPluginCheckbox = document.getElementById('autostartPlugin');
 const autostartOpenClawCheckbox = document.getElementById('autostartOpenClaw');
+const fetchTokenOnStartupCheckbox = document.getElementById('fetchTokenOnStartup');
 
 function updateUI() {
   if (status.running) {
@@ -186,6 +188,7 @@ async function loadSettings() {
   minimizeToTrayCheckbox.checked = settings.minimizeToTray ?? false;
   autostartPluginCheckbox.checked = settings.autostartPlugin ?? false;
   autostartOpenClawCheckbox.checked = settings.autostartOpenClaw ?? false;
+  fetchTokenOnStartupCheckbox.checked = settings.fetchTokenOnStartup ?? true;
 }
 
 function closeSettingsModal() {
@@ -204,7 +207,8 @@ saveSettingsBtn.addEventListener('click', async () => {
   const newSettings = {
     minimizeToTray: minimizeToTrayCheckbox.checked,
     autostartPlugin: autostartPluginCheckbox.checked,
-    autostartOpenClaw: autostartOpenClawCheckbox.checked
+    autostartOpenClaw: autostartOpenClawCheckbox.checked,
+    fetchTokenOnStartup: fetchTokenOnStartupCheckbox.checked
   };
   await window.electronAPI.saveSettings(newSettings);
   settings = newSettings;
