@@ -132,6 +132,7 @@ const navItems = [
   { key: '/chat', icon: MessageOutlined, label: '聊天' },
   { key: '/config', icon: SettingOutlined, label: '配置' },
   { key: '/recharge', icon: PayCircleOutlined, label: '充值' },
+  { key: '/profile', icon: UserOutlined, label: '个人中心' },
   { key: '/tutorial', icon: BookOutlined, label: '教程' },
   { key: '/test', icon: BugOutlined, label: '测试' },
 ]

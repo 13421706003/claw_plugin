@@ -13,6 +13,7 @@ export const useUserStore = () => {
   const token    = computed(() => _token.value)
   const user     = computed(() => _user.value)
   const isLogged = computed(() => !!_token.value)
+  const username = computed(() => _user.value?.username || '')
 
   /**
    * 登录
@@ -37,6 +38,20 @@ export const useUserStore = () => {
     storage.setItem(USER_KEY, JSON.stringify(_user.value))
   }
 
+  /**
+   * 设置用户名
+   * @param {string} newUsername
+   */
+  const setUsername = (newUsername) => {
+    if (_user.value) {
+      _user.value = { ..._user.value, username: newUsername }
+      
+      // 更新存储
+      const storage = localStorage.getItem(USER_KEY) ? localStorage : sessionStorage
+      storage.setItem(USER_KEY, JSON.stringify(_user.value))
+    }
+  }
+
   const logout = () => {
     clearMessages()
     _token.value = ''
@@ -47,5 +62,5 @@ export const useUserStore = () => {
     sessionStorage.removeItem(USER_KEY)
   }
 
-  return { token, user, isLogged, login, logout }
+  return { token, user, isLogged, username, login, setUsername, logout }
 }

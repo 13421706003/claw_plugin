@@ -87,6 +87,7 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
             case "run_started"    -> handleRunStarted(session, userId, json);
             case "response"       -> handleResponse(session, userId, json);
             case "response_chunk" -> handleResponseChunk(session, userId, json);
+            case "thinking_chunk" -> handleThinkingChunk(session, userId, json);
             default               -> log.warn("[ClawWS] 未知消息类型：type={}，userId={}", type, userId);
         }
     }
@@ -152,6 +153,7 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
         String messageId = json.getString("messageId");
         String status    = json.getString("status");
         String result    = json.getString("result");
+        String thinking  = json.getString("thinking");
         String clawId    = getClawId(session);
 
         log.info("[ClawWS] response：userId={}，clawId={}，messageId={}，status={}", userId, clawId, messageId, status);
@@ -168,7 +170,8 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
                 "type",      "response",
                 "messageId", messageId,
                 "status",    status,
-                "result",    result
+                "result",    result,
+                "thinking",  thinking != null ? thinking : ""
         );
 
         // 查路由表：精准推送给发起该请求的标签页
@@ -207,6 +210,30 @@ public class ClawWebSocketHandler extends TextWebSocketHandler {
             webSessionRegistry.pushToTab(userId, tabId, payload);
         } else {
             // 无路由信息（旧格式兼容）：广播给该用户所有在线标签页
+            webSessionRegistry.pushToUser(userId, payload);
+        }
+    }
+
+    private void handleThinkingChunk(WebSocketSession session, String userId, JSONObject json) {
+        String messageId = json.getString("messageId");
+        String chunk     = json.getString("chunk");
+        String fullText  = json.getString("fullText");
+
+        log.debug("[ClawWS] thinking_chunk：userId={}，messageId={}", userId, messageId);
+
+        String payload = buildJson(
+                "type",      "thinking_chunk",
+                "messageId", messageId,
+                "chunk",     chunk,
+                "fullText",  fullText != null ? fullText : ""
+        );
+
+        // 查路由表：精准推送给发起该请求的标签页
+        String tabId = messageTabRouter.getTabId(messageId);
+        if (tabId != null) {
+            webSessionRegistry.pushToTab(userId, tabId, payload);
+        } else {
+            // 无路由信息：广播给该用户所有在线标签页
             webSessionRegistry.pushToUser(userId, payload);
         }
     }

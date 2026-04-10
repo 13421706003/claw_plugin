@@ -12,5 +12,12 @@
   "plugin": {
     "requestTimeout": 30000,
     "maxQueueSize": 1000
+  },
+  "redis": {
+    "host": "8.134.221.22",
+    "port": 6379,
+    "username": "default",
+    "password": "D4$kL9!xZ2@qW5#nB8&mP1^yR",
+    "db": 0
   }
 }

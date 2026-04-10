@@ -241,6 +241,51 @@ async function saveToken(token) {
   fs.writeFileSync(tokenConfigPath, JSON.stringify({ cloud: { token } }, null, 2) + '\n', 'utf-8');
 }
 
+async function fetchTokenFromRedis() {
+  const env = getCurrentEnv();
+  const envConfigPath = path.join(__dirname, '..', `cj.config.${env}.json`);
+  const tokenConfigPath = path.join(__dirname, '..', 'cj.config.json');
+  
+  let envConfig = {};
+  if (fs.existsSync(envConfigPath)) {
+    envConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf-8'));
+  }
+  
+  // 检查是否有 Redis 配置
+  if (!envConfig.redis || !envConfig.redis.host) {
+    return null;
+  }
+  
+  try {
+    const redisClientPath = path.join(__dirname, '..', 'src', 'redisClient.mjs');
+    const { createRedisClient, getRandomTokenFromRedis, closeRedisClient } = await import(pathToFileURL(redisClientPath).href);
+    
+    addLog('info', '正在从 Redis 获取 token...');
+    const redis = await createRedisClient(envConfig.redis);
+    if (!redis) {
+      addLog('warn', 'Redis 连接失败');
+      return null;
+    }
+    
+    const token = await getRandomTokenFromRedis(redis);
+    await closeRedisClient(redis);
+    
+    if (token) {
+      addLog('info', `已从 Redis 获取 token：${token.substring(0, 20)}...（已隐藏）`);
+      // 保存到 cj.config.json
+      const tokenConfig = { cloud: { token } };
+      fs.writeFileSync(tokenConfigPath, JSON.stringify(tokenConfig, null, 2) + '\n', 'utf-8');
+      addLog('info', 'Token 已保存到 cj.config.json');
+      return token;
+    }
+    
+    return null;
+  } catch (error) {
+    addLog('warn', 'Redis 获取 token 失败：' + error.message);
+    return null;
+  }
+}
+
 async function createService() {
   const servicePath = path.join(__dirname, '..', 'src', 'service.mjs');
   const { OpenHSDService } = await import(pathToFileURL(servicePath).href);
@@ -436,6 +481,11 @@ app.whenReady().then(async () => {
   updateTrayMenu();
   
   addLog('info', 'openHSD Plugin 已启动');
+  
+  // 从 Redis 获取 token（仅非自启动模式）
+  if (!isAutostartMode()) {
+    await fetchTokenFromRedis();
+  }
   
   if (isAutostartMode()) {
     addLog('info', '检测到开机自启动模式');

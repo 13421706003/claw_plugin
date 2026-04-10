@@ -151,8 +151,8 @@
           />
           <!-- 输入框 -->
           <Sender
-            :key="senderKey"
-            v-model:value="inputValue"
+            :value="inputValue"
+            @update:value="(val) => (inputValue = val)"
             @submit="onSubmit"
             @cancel="handleAbort"
             :loading="loading"
@@ -251,7 +251,6 @@ const userStore = useUserStore()
 
 // ==================== State ====================
 const inputValue = ref('')
-const senderKey = ref(0)
 const chatListRef = ref(null)
 const attachmentsOpen = ref(false)
 const attachedFiles = ref([])
@@ -486,13 +485,9 @@ const onSubmit = (val) => {
     message.error('请求正在进行中，请稍候...')
     return
   }
-  const messageContent = val
-  const messageAttachments = [...attachments.value]
-  // 重置 senderKey 强制重新挂载 Sender，彻底清空其内部状态
+  sendMessage(val, attachments.value, clawList.value)
   inputValue.value = ''
   attachments.value = []
-  senderKey.value++
-  sendMessage(messageContent, messageAttachments, clawList.value)
 }
 
 // ==================== 附件处理 ====================
@@ -783,6 +778,12 @@ const bubbleItems = computed(() => {
   return messages.value.map((msg, index) => {
     let content = msg.content || ''
 
+    // 处理思考内容：在正式内容前添加思考标记
+    if (msg.thinking && msg.role === 'assistant') {
+      const thinkingMarker = `<!--thinking:${encodeURIComponent(msg.thinking)}|${msg.thinkingStreaming ? 'streaming' : 'completed'}-->`
+      content = thinkingMarker + content
+    }
+
     // 处理附件：图片和文件都用 <!--img:url--> 和 <!--file:...--> 标记，不走 Markdown
     if (msg.attachments && msg.attachments.length > 0) {
       const imageExts = ['jpg','jpeg','png','gif','webp','bmp','svg']
@@ -896,6 +897,52 @@ const bubbleRoles = computed(() => ({
       const isStreaming = content.endsWith('\x00STREAMING')
       const children = []
       let actualContent = isStreaming ? content.slice(0, -'\x00STREAMING'.length) : content
+
+      // 0. 解析思考内容标记 <!--thinking:内容|状态-->
+      const thinkingRegex = /<!--thinking:([^|]*)\|([^>]*)-->/
+      const thinkingMatch = actualContent.match(thinkingRegex)
+      if (thinkingMatch) {
+        actualContent = actualContent.replace(thinkingRegex, '')
+        const thinkingText = decodeURIComponent(thinkingMatch[1])
+        const thinkingStatus = thinkingMatch[2] // 'streaming' 或 'completed'
+        
+        if (thinkingText) {
+          children.push(h('div', {
+            style: {
+              background: '#f0f5ff',
+              border: '1px solid #d6e4ff',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '12px',
+              fontSize: '13px',
+              lineHeight: '1.6',
+              color: '#1d39c4',
+            }
+          }, [
+            h('div', {
+              style: {
+                fontWeight: 600,
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }
+            }, [
+              h('span', '💭 思考过程'),
+              thinkingStatus === 'streaming' && h('span', {
+                class: 'streaming-cursor',
+                style: { fontSize: '12px', color: '#1677ff' }
+              }, '▌')
+            ]),
+            h('div', {
+              style: {
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }
+            }, thinkingText)
+          ]))
+        }
+      }
 
       // 1. 解析图片标记 <!--img:url-->（无闪烁）
       const imgTagRegex = /<!--img:([^>]*)-->/g

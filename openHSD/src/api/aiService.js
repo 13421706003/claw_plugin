@@ -13,6 +13,7 @@ const currentClawId = ref(null)
 let pendingBroadcastCount = 0
 
 const pendingContent = new Map()
+const pendingThinking = new Map()
 
 /**
  * messageId → clawId 归属映射
@@ -37,7 +38,28 @@ function getStoredUserId() {
 }
 
 setOnMessage((type, data) => {
-  const { messageId, chunk, result, status } = data
+  const { messageId, chunk, result, status, thinking, fullText } = data
+
+  // 处理思考消息增量
+  if (type === 'thinking_chunk') {
+    const thinkingText = extractText(chunk) || chunk
+    if (thinkingText) {
+      // 累积追加思考内容
+      const prev = pendingThinking.get(messageId) || ''
+      const accumulated = prev + thinkingText
+      pendingThinking.set(messageId, accumulated)
+
+      // 归属判断
+      const belongsTo = messageClawMap.get(messageId)
+      if (belongsTo && belongsTo !== currentClawId.value) {
+        console.debug(`[aiService] thinking_chunk 跳过渲染（当前设备=${currentClawId.value}，消息归属=${belongsTo}）`)
+        return
+      }
+
+      // 更新思考内容显示
+      updateThinkingMessageStreaming(messageId, accumulated)
+    }
+  }
 
   if (type === 'response_chunk') {
     const text = extractText(chunk)
@@ -61,7 +83,9 @@ setOnMessage((type, data) => {
 
   if (type === 'response') {
     const text = extractText(result) || pendingContent.get(messageId) || ''
+    const thinkingText = thinking || pendingThinking.get(messageId) || ''
     pendingContent.delete(messageId)
+    pendingThinking.delete(messageId)
 
     // 归属判断：不属于当前设备，只清理状态，不渲染到当前消息列表
     // （用户切回该设备时会通过 loadHistory 从数据库拿到完整记录）
@@ -83,7 +107,7 @@ setOnMessage((type, data) => {
       return
     }
 
-    updateAssistantMessage(messageId, text, true)
+    updateAssistantMessage(messageId, text, thinkingText, true)
 
     // 广播模式：等所有设备都回复完才解除 loading
     if (pendingBroadcastCount > 0) {
@@ -202,19 +226,23 @@ const parseContentBlocks = (blocks) => {
   }).join('\n\n')
 }
 
-const updateAssistantMessage = (messageId, content, isFinal) => {
+const updateAssistantMessage = (messageId, content, thinking, isFinal) => {
   const idx = messages.value.findIndex(m => m.messageId === messageId && m.role === 'assistant')
   if (idx >= 0) {
     messages.value[idx].content = content
+    messages.value[idx].thinking = thinking || ''
     messages.value[idx].loading = !isFinal
     messages.value[idx].streaming = false
+    messages.value[idx].thinkingStreaming = false
   } else {
     messages.value.push({
       messageId,
       role: 'assistant',
       content,
+      thinking: thinking || '',
       loading: !isFinal,
-      streaming: false
+      streaming: false,
+      thinkingStreaming: false
     })
   }
 }
@@ -237,6 +265,28 @@ const updateAssistantMessageStreaming = (messageId, content) => {
       content,
       loading: false,
       streaming: true
+    })
+  }
+}
+
+/**
+ * 思考内容流式更新：
+ * - thinkingStreaming=true：标记思考内容正在流式输出
+ */
+const updateThinkingMessageStreaming = (messageId, thinking) => {
+  const idx = messages.value.findIndex(m => m.messageId === messageId && m.role === 'assistant')
+  if (idx >= 0) {
+    messages.value[idx].thinking = thinking
+    messages.value[idx].thinkingStreaming = true
+  } else {
+    messages.value.push({
+      messageId,
+      role: 'assistant',
+      content: '',
+      thinking,
+      loading: true,
+      streaming: false,
+      thinkingStreaming: true
     })
   }
 }
@@ -329,17 +379,17 @@ const selectClaw = async (clawId) => {
 }
 
 const sendMessage = async (content, attachments = [], clawList = []) => {
-  if ((!content && attachments.length === 0) || loading.value) return false
+  if ((!content && attachments.length === 0) || loading.value) return
 
   const userId = getStoredUserId()
   if (!userId) {
     console.error('[aiService] 未登录，无法发送消息')
-    return false
+    return
   }
 
   if (!currentClawId.value) {
     console.error('[aiService] 未选择设备，无法发送消息')
-    return false
+    return
   }
 
   if (!isConnected.value) {
@@ -349,7 +399,8 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
 
   // 广播模式
   if (currentClawId.value === '__ALL__') {
-    return await sendBroadcast(userId, content, attachments, clawList)
+    await sendBroadcast(userId, content, attachments, clawList)
+    return
   }
 
   // 单设备模式
@@ -358,8 +409,9 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
   lastMessageId = messageId
 
   messages.value.push({ messageId, role: 'user', content, attachments })
-  messages.value.push({ messageId, role: 'assistant', content: '', loading: true, streaming: false })
+  messages.value.push({ messageId, role: 'assistant', content: '', thinking: '', loading: true, streaming: false, thinkingStreaming: false })
   pendingContent.set(messageId, '')
+  pendingThinking.set(messageId, '')
   messageClawMap.set(messageId, currentClawId.value)
 
   // 格式化附件：图片需要同时传 objectKey 和 base64，文档只传 objectKey
@@ -396,15 +448,12 @@ const sendMessage = async (content, attachments = [], clawList = []) => {
       messageClawMap.delete(messageId)
       updateAssistantMessage(messageId, data.message || '发送失败', true)
       loading.value = false
-      return false
     }
-    return true
   } catch (e) {
     console.error('[aiService] 发送失败：', e)
     messageClawMap.delete(messageId)
     updateAssistantMessage(messageId, '网络错误，请重试', true)
     loading.value = false
-    return false
   }
 }
 
@@ -442,7 +491,7 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
     if (!data.success) {
       messages.value.push({ messageId, role: 'assistant', content: data.message || '广播失败', loading: false })
       loading.value = false
-      return false
+      return
     }
 
     // 为每台成功发送的设备创建 assistant 占位消息
@@ -456,11 +505,14 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
         messageId: subMsgId,
         role: 'assistant',
         content: '',
+        thinking: '',
         loading: true,
         streaming: false,
+        thinkingStreaming: false,
         clawId   // 标记来源设备
       })
       pendingContent.set(subMsgId, '')
+      pendingThinking.set(subMsgId, '')
       // 广播模式：子消息归属 '__ALL__'，确保广播视图下始终渲染
       messageClawMap.set(subMsgId, '__ALL__')
     })
@@ -468,13 +520,10 @@ const sendBroadcast = async (userId, content, attachments, clawList) => {
     if (sentClawIds.length === 0) {
       loading.value = false
     }
-    
-    return true
   } catch (e) {
     console.error('[aiService] 广播失败：', e)
     messages.value.push({ messageId, role: 'assistant', content: '网络错误，请重试', loading: false })
     loading.value = false
-    return false
   }
 }
 

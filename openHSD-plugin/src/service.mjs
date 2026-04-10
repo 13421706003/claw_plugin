@@ -161,6 +161,31 @@ export class OpenHSDService {
         return;
       }
 
+      // 处理 thinking 事件流
+      if (msg.type === 'event' && msg.stream === 'thinking') {
+        const { runId, data } = msg;
+        const messageId = this.runMap.get(runId);
+
+        if (!messageId) {
+          this.log('warn', '收到未知 runId 的 thinking event，忽略：' + runId);
+          return;
+        }
+
+        const { text, delta } = data || {};
+        
+        // 发送 thinking_chunk 消息
+        if (delta) {
+          this.wsClient.send({
+            type: 'thinking_chunk',
+            messageId,
+            chunk: delta,
+            fullText: text,
+          });
+          this.log('info', `thinking delta：${delta.substring(0, 50)}...`);
+        }
+        return;
+      }
+
       if (msg.type === 'event' && msg.event === 'chat') {
         const { runId, state, message, errorMessage, seq } = msg.payload ?? {};
         const messageId = this.runMap.get(runId);
@@ -192,12 +217,23 @@ export class OpenHSDService {
 
         if (state === 'final') {
           this.lastSentLength.delete(messageId);
+          
+          // 提取 thinking 内容
+          let thinkingContent = '';
+          if (Array.isArray(message?.content)) {
+            const thinkingBlock = message.content.find(c => c.type === 'thinking');
+            if (thinkingBlock && thinkingBlock.thinking) {
+              thinkingContent = thinkingBlock.thinking;
+            }
+          }
+          
           this.wsClient.send({
             type: 'response',
             messageId,
             status: 'completed',
             result: message?.content ?? '',
             attachments: message?.attachments ?? [],
+            thinking: thinkingContent,
           });
           this.log('info', `final 转发：messageId=${messageId}`);
           this.runMap.delete(runId);

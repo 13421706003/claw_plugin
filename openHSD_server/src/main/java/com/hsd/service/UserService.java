@@ -7,4 +7,8 @@ public interface UserService {
     Map<String, Object> login(String username, String password);
 
     void register(String username, String password);
+
+    void updateUsername(Long userId, String newUsername);
+
+    void updatePassword(Long userId, String oldPassword, String newPassword);
 }

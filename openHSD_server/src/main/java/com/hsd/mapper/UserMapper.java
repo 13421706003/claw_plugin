@@ -60,4 +60,24 @@ public interface UserMapper {
      */
     @Update("UPDATE users SET openrouter_key_hash = #{keyHash} WHERE id = #{userId}")
     int updateKeyHash(@Param("userId") Long userId, @Param("keyHash") String keyHash);
+
+    /**
+     * 更新用户名
+     * 
+     * @param userId 用户ID
+     * @param newUsername 新用户名
+     * @return 影响行数
+     */
+    @Update("UPDATE users SET username = #{newUsername} WHERE id = #{userId}")
+    int updateUsername(@Param("userId") Long userId, @Param("newUsername") String newUsername);
+
+    /**
+     * 更新密码
+     * 
+     * @param userId 用户ID
+     * @param passwordHash 新密码哈希值
+     * @return 影响行数
+     */
+    @Update("UPDATE users SET password_hash = #{passwordHash} WHERE id = #{userId}")
+    int updatePassword(@Param("userId") Long userId, @Param("passwordHash") String passwordHash);
 }

@@ -19,6 +19,13 @@ spring:
 #    password: Cend123...
     password: huashidai123
     type: com.alibaba.druid.pool.DruidDataSource
+  data:
+    redis:
+      host: 8.134.221.22
+      port: 6379
+      password: D4$kL9!xZ2@qW5#nB8&mP1^yR
+      database: 0
+      username: default
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
