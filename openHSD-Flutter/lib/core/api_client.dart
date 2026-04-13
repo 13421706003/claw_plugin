@@ -205,6 +205,28 @@ class ApiClient {
     await _requireSuccess(res);
   }
 
+  Future<Map<String, dynamic>> abortMessage({
+    required int userId,
+    required String messageId,
+    String? clawId,
+  }) async {
+    final res = await _dio.post(
+      '${AppConfig.apiPrefix}/claw/abort',
+      data: {
+        'userId': userId.toString(),
+        'messageId': messageId,
+        if (clawId != null && clawId.isNotEmpty) 'clawId': clawId,
+      },
+      options: _authOptions(),
+    );
+    final raw = res.data;
+    if (raw is Map<String, dynamic>) return raw;
+    throw Exception(
+      '中止接口响应格式异常'
+      '${res.statusCode != null ? ' (http=${res.statusCode})' : ''}: $raw',
+    );
+  }
+
   Future<List<UploadedServerFile>> uploadFiles({
     required int userId,
     required String clawId,

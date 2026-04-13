@@ -1,21 +1,26 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter/services.dart';
+import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 import '../controllers/auth_controller.dart';
 import '../controllers/chat_controller.dart';
+import '../core/app_config.dart';
 import '../core/api_client.dart';
 import '../core/speech_transcribe.dart';
 import '../models/openhsd_models.dart';
@@ -68,6 +73,506 @@ abstract final class _OhsdChatTheme {
   static const Color clawCardBorder = Color(0xFFD9F7BE);
   static const Color dangerFaintBg = Color(0x0FFF4D4F);
   static const Color tokenBodyHex = Color(0xFF333333);
+}
+
+String _sanitizeFileName(String name) {
+  var n = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+  if (n.isEmpty) n = 'download';
+  return n;
+}
+
+Future<File> _saveBytesToDownloads(String preferredName, List<int> bytes) async {
+  final dir =
+      await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+  final base = _sanitizeFileName(preferredName);
+  var path = '${dir.path}/$base';
+  if (await File(path).exists()) {
+    final dot = base.lastIndexOf('.');
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    path = dot > 0
+        ? '${dir.path}/${base.substring(0, dot)}_$ts${base.substring(dot)}'
+        : '${dir.path}/${base}_$ts';
+  }
+  final file = File(path);
+  await file.writeAsBytes(bytes);
+  return file;
+}
+
+bool _isImageAttachment(ChatAttachment att) {
+  final mt = (att.mimeType ?? '').toLowerCase();
+  if (mt.startsWith('image/')) return true;
+  final dataUri = (att.dataUri ?? '').toLowerCase();
+  if (dataUri.startsWith('data:image/')) return true;
+  final n = att.name.toLowerCase();
+  return n.endsWith('.png') ||
+      n.endsWith('.jpg') ||
+      n.endsWith('.jpeg') ||
+      n.endsWith('.gif') ||
+      n.endsWith('.webp') ||
+      n.endsWith('.bmp') ||
+      n.endsWith('.heic') ||
+      n.endsWith('.heif');
+}
+
+Future<bool> _saveImageToGallery(String preferredName, List<int> bytes) async {
+  final base = _sanitizeFileName(preferredName);
+  final dot = base.lastIndexOf('.');
+  final nameWithoutExt = dot > 0 ? base.substring(0, dot) : base;
+  final result = await ImageGallerySaverPlus.saveImage(
+    Uint8List.fromList(bytes),
+    quality: 100,
+    name: nameWithoutExt,
+  );
+  if (result is Map) {
+    final ok = result['isSuccess'] ?? result['success'];
+    if (ok is bool) return ok;
+    if (ok is num) return ok != 0;
+  }
+  return result != null;
+}
+
+bool _isVideoAttachment(ChatAttachment att) {
+  final mt = (att.mimeType ?? '').toLowerCase();
+  if (mt.startsWith('video/')) return true;
+  final n = att.name.toLowerCase();
+  return n.endsWith('.mp4') || n.endsWith('.mov') || n.endsWith('.m4v');
+}
+
+Future<void> _downloadChatAttachment(
+  BuildContext context,
+  ChatAttachment att,
+  String authToken,
+  {bool showSnackBar = true}
+) async {
+  try {
+    late List<int> bytes;
+    final dataUri = att.dataUri;
+    if (dataUri != null && dataUri.startsWith('data:')) {
+      final comma = dataUri.indexOf(',');
+      if (comma < 0) throw Exception('无效的数据');
+      bytes = base64Decode(dataUri.substring(comma + 1));
+    } else {
+      final url = att.url ??
+          (dataUri != null &&
+                  (dataUri.startsWith('http://') || dataUri.startsWith('https://'))
+              ? dataUri
+              : null);
+      if (url == null || url.isEmpty) {
+        if (showSnackBar && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('没有可下载的文件地址')),
+          );
+        }
+        return;
+      }
+      final dio = Dio();
+      final res = await dio.get<List<int>>(
+        url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: authToken.isNotEmpty
+              ? {'Authorization': 'Bearer $authToken'}
+              : {},
+        ),
+      );
+      final raw = res.data;
+      if (raw == null || raw.isEmpty) throw Exception('下载内容为空');
+      bytes = raw;
+    }
+    if (_isImageAttachment(att)) {
+      final ok = await _saveImageToGallery(att.name, bytes);
+      if (!ok) throw Exception('保存到相册失败');
+      if (showSnackBar && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('图片已保存到相册')),
+        );
+      }
+    } else {
+      final file = await _saveBytesToDownloads(att.name, bytes);
+      if (showSnackBar && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存：${file.path}')),
+        );
+      }
+    }
+  } catch (e) {
+    if (showSnackBar && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存失败：$e')),
+      );
+    }
+    rethrow;
+  }
+}
+
+Future<void> _previewVideoAttachment(
+  BuildContext context,
+  ChatAttachment att,
+  String authToken,
+) async {
+  try {
+    final url = att.url;
+    if (url == null || url.trim().isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('暂无视频地址，无法预览')),
+        );
+      }
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null) throw Exception('无效的视频地址');
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => _VideoPreviewDialog(
+        att: att,
+        networkUri: uri,
+        authToken: authToken,
+      ),
+    );
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('预览失败：$e')),
+      );
+    }
+  }
+}
+
+class _VideoPreviewDialog extends StatefulWidget {
+  final ChatAttachment att;
+  final Uri networkUri;
+  final String authToken;
+
+  const _VideoPreviewDialog({
+    required this.att,
+    required this.networkUri,
+    required this.authToken,
+  });
+
+  @override
+  State<_VideoPreviewDialog> createState() => _VideoPreviewDialogState();
+}
+
+class _VideoPreviewDialogState extends State<_VideoPreviewDialog> {
+  VideoPlayerController? _ctl;
+  Future<void>? _init;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctl = VideoPlayerController.networkUrl(
+      widget.networkUri,
+      httpHeaders: widget.authToken.isNotEmpty
+          ? {'Authorization': 'Bearer ${widget.authToken}'}
+          : const <String, String>{},
+    );
+    _init = _ctl!.initialize().then((_) => _ctl!.play());
+  }
+
+  @override
+  void dispose() {
+    _ctl?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveToDownloads() async {
+    try {
+      final auth = context.read<AuthController>();
+      await _downloadChatAttachment(context, widget.att, auth.token);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('保存失败：$e')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ctl = _ctl;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: EdgeInsets.zero,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: FutureBuilder<void>(
+              future: _init,
+              builder: (ctx, snap) {
+                if (snap.connectionState != ConnectionState.done || ctl == null) {
+                  return const CircularProgressIndicator(color: Colors.white70);
+                }
+                final ar = ctl.value.aspectRatio;
+                return AspectRatio(
+                  aspectRatio: ar <= 0 ? 16 / 9 : ar,
+                  child: VideoPlayer(ctl),
+                );
+              },
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            (ctl?.value.isPlaying ?? false)
+                                ? Icons.pause_circle_outline
+                                : Icons.play_circle_outline,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                          onPressed: () {
+                            final c = _ctl;
+                            if (c == null) return;
+                            setState(() {
+                              c.value.isPlaying ? c.pause() : c.play();
+                            });
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.download_outlined,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                          onPressed: _saveToDownloads,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _buildFullScreenPreviewImage(String src) {
+  if (src.isEmpty) {
+    return const Center(
+      child: Text('无法预览', style: TextStyle(color: Colors.white70)),
+    );
+  }
+  if (src.startsWith('http://') || src.startsWith('https://')) {
+    return Image.network(src, fit: BoxFit.contain);
+  }
+  if (src.startsWith('data:')) {
+    try {
+      final comma = src.indexOf(',');
+      if (comma < 0) return const SizedBox.shrink();
+      return Image.memory(
+        base64Decode(src.substring(comma + 1)),
+        fit: BoxFit.contain,
+      );
+    } catch (_) {
+      return const Center(
+        child: Text('无法解析图片', style: TextStyle(color: Colors.white70)),
+      );
+    }
+  }
+  return const SizedBox.shrink();
+}
+
+void _showImagePreview(BuildContext context, ChatAttachment att) {
+  final src = att.dataUri ?? att.url ?? '';
+  showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (ctx) {
+      String? tip;
+      Timer? hideTipTimer;
+      return StatefulBuilder(
+        builder: (ctx, setState) {
+          void showTip(String message) {
+            hideTipTimer?.cancel();
+            setState(() => tip = message);
+            hideTipTimer = Timer(const Duration(seconds: 2), () {
+              if (!ctx.mounted) return;
+              setState(() => tip = null);
+            });
+          }
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: EdgeInsets.zero,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 5,
+                    child: _buildFullScreenPreviewImage(src),
+                  ),
+                ),
+                SafeArea(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                            onPressed: () {
+                              hideTipTimer?.cancel();
+                              Navigator.of(ctx).pop();
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(
+                              Icons.download_outlined,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                            onPressed: () async {
+                              final auth = context.read<AuthController>();
+                              try {
+                                await _downloadChatAttachment(
+                                  context,
+                                  att,
+                                  auth.token,
+                                  showSnackBar: false,
+                                );
+                                showTip('图片已保存到相册');
+                              } catch (e) {
+                                showTip('保存失败：$e');
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (tip != null)
+                  SafeArea(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: const Color(0xCC111111),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            child: Text(
+                              tip!,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+void _copyMessageContent(BuildContext context, String text) {
+  final content = text.trim();
+  if (content.isEmpty) return;
+  ClipboardStatus.setClipboard(content);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('已复制回复内容')),
+  );
+}
+
+Future<void> _showDocumentActionsSheet(
+  BuildContext context,
+  ChatAttachment att,
+  String authToken,
+) async {
+  final url = att.url;
+  if (url == null || url.isEmpty) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('暂无文件地址，无法预览或保存')),
+      );
+    }
+    return;
+  }
+  await showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: _OhsdChatTheme.bgSurface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+    ),
+    builder: (ctx) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isVideoAttachment(att))
+              ListTile(
+                leading: const Icon(Icons.play_circle_outline),
+                title: const Text('预览视频'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _previewVideoAttachment(context, att, authToken);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.visibility_outlined),
+              title: const Text('预览'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final uri = Uri.tryParse(url);
+                if (uri == null) return;
+                final ok = await canLaunchUrl(uri);
+                if (!context.mounted) return;
+                if (ok) {
+                  await launchUrl(uri, mode: LaunchMode.inAppWebView);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('无法打开该链接')),
+                  );
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('保存到手机'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _downloadChatAttachment(context, att, authToken);
+              },
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class ChatPage extends StatefulWidget {
@@ -358,6 +863,7 @@ class _ChatPageState extends State<ChatPage> {
               chat.messages.isNotEmpty &&
               chat.messages.last.role == 'assistant' &&
               chat.messages.last.loading;
+          final composerLocked = sendLoading;
           final sendActive =
               chat.inputText.trim().isNotEmpty || chat.attachments.isNotEmpty;
 
@@ -690,10 +1196,12 @@ class _ChatPageState extends State<ChatPage> {
                         const SizedBox(width: 6),
                         _ToolIconButton(
                           tooltip: '新对话（清空历史）',
-                          onTap: () async {
-                            await chat.startNewConversation();
-                            if (mounted) _inputCtl.clear();
-                          },
+                          onTap: sendLoading
+                              ? null
+                              : () async {
+                                  await chat.startNewConversation();
+                                  if (mounted) _inputCtl.clear();
+                                },
                           child: Icon(
                             Icons.add_comment_outlined,
                             size: 21,
@@ -719,7 +1227,10 @@ class _ChatPageState extends State<ChatPage> {
                           itemCount: chat.messages.length,
                           itemBuilder: (context, idx) {
                             final msg = chat.messages[idx];
-                            return _MessageBubble(msg: msg);
+                            return KeyedSubtree(
+                              key: ValueKey('${msg.role}:${msg.messageId}'),
+                              child: _MessageBubble(msg: msg),
+                            );
                           },
                         );
                       },
@@ -732,11 +1243,15 @@ class _ChatPageState extends State<ChatPage> {
                   child: Container(
                     color: _OhsdChatTheme.bgSurface,
                     padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (chat.attachments.isNotEmpty)
+                    child: IgnorePointer(
+                      ignoring: composerLocked,
+                      child: Opacity(
+                        opacity: composerLocked ? 0.6 : 1.0,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (chat.attachments.isNotEmpty)
                           Container(
                             width: double.infinity,
                             margin: const EdgeInsets.only(bottom: 6),
@@ -763,11 +1278,25 @@ class _ChatPageState extends State<ChatPage> {
                                     ),
                                     onRemove: () =>
                                         chat.removeAttachment(att.uid),
+                                    onOpen: () {
+                                      if (att.isImage) {
+                                        _showImagePreview(context, att);
+                                        return;
+                                      }
+                                      final auth = context.read<AuthController>();
+                                      unawaited(
+                                        _showDocumentActionsSheet(
+                                          context,
+                                          att,
+                                          auth.token,
+                                        ),
+                                      );
+                                    },
                                   ),
                               ],
                             ),
                           ),
-                        AnimatedContainer(
+                            AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
                           padding: const EdgeInsets.fromLTRB(9, 8, 9, 7),
                           decoration: BoxDecoration(
@@ -819,6 +1348,7 @@ class _ChatPageState extends State<ChatPage> {
                                 )
                               else
                                 TextField(
+                                  enabled: !composerLocked,
                                   controller: _inputCtl,
                                   focusNode: _inputFocus,
                                   maxLength: 500,
@@ -826,7 +1356,9 @@ class _ChatPageState extends State<ChatPage> {
                                   minLines: 1,
                                   keyboardType: TextInputType.multiline,
                                   textInputAction: TextInputAction.send,
-                                  onSubmitted: (_) => _sendMessage(),
+                                  onSubmitted: composerLocked
+                                      ? null
+                                      : (_) => _sendMessage(),
                                   style: const TextStyle(
                                     fontSize: 12,
                                     color: Color(0xD9000000),
@@ -854,17 +1386,19 @@ class _ChatPageState extends State<ChatPage> {
                                   _ChatInputSideButton(
                                     icon: Icons.attach_file,
                                     label: '附件',
-                                    onTap: _pickFiles,
+                                    onTap: composerLocked ? null : _pickFiles,
                                   ),
                                   const SizedBox(width: 6),
                                   _ChatInputSideButton(
                                     icon: Icons.mic_none_outlined,
                                     label: '语音',
                                     active: _voiceUiEnabled,
-                                    onTap: () => setState(() {
-                                      _voiceUiEnabled = !_voiceUiEnabled;
-                                      _voiceMode = _voiceUiEnabled;
-                                    }),
+                                    onTap: composerLocked
+                                        ? null
+                                        : () => setState(() {
+                                              _voiceUiEnabled = !_voiceUiEnabled;
+                                              _voiceMode = _voiceUiEnabled;
+                                            }),
                                   ),
                                   const Spacer(),
                                   Material(
@@ -920,6 +1454,8 @@ class _ChatPageState extends State<ChatPage> {
                           ),
                         ),
                       ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -1021,6 +1557,7 @@ class _ChatPageState extends State<ChatPage> {
                   vertical: 10,
                 ),
                 children: [
+                  /*
                   _drawerNavRow(
                     icon: Icons.account_balance_wallet_outlined,
                     title: '账号余额',
@@ -1033,6 +1570,7 @@ class _ChatPageState extends State<ChatPage> {
                       );
                     },
                   ),
+                  */
                   _drawerNavRow(
                     icon: Icons.person_outline_rounded,
                     title: '个人中心',
@@ -1056,6 +1594,14 @@ class _ChatPageState extends State<ChatPage> {
                           builder: (_) => const _ServiceAgreementPage(),
                         ),
                       );
+                    },
+                  ),
+                  _drawerNavRow(
+                    icon: Icons.menu_book_outlined,
+                    title: 'openHSD 教程',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      Navigator.of(context).pushNamed('/tutorial');
                     },
                   ),
                   _drawerNavRow(
@@ -1705,7 +2251,7 @@ class _ToolChip extends StatelessWidget {
 
 class _ToolIconButton extends StatelessWidget {
   final String tooltip;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final Widget child;
 
   const _ToolIconButton({
@@ -1716,6 +2262,7 @@ class _ToolIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final disabled = onTap == null;
     return Tooltip(
       message: tooltip,
       child: Material(
@@ -1732,7 +2279,7 @@ class _ToolIconButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: _OhsdChatTheme.borderLight),
             ),
-            child: child,
+            child: Opacity(opacity: disabled ? 0.4 : 1, child: child),
           ),
         ),
       ),
@@ -1743,7 +2290,7 @@ class _ToolIconButton extends StatelessWidget {
 class _ChatInputSideButton extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool active;
 
   const _ChatInputSideButton({
@@ -1755,6 +2302,7 @@ class _ChatInputSideButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final disabled = onTap == null;
     final fg = active ? Colors.white : _OhsdChatTheme.textSecondary;
     final bg = active ? _OhsdChatTheme.primary : _OhsdChatTheme.bgPage;
     final bd = active ? _OhsdChatTheme.primary : _OhsdChatTheme.borderLight;
@@ -1774,9 +2322,18 @@ class _ChatInputSideButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 18, color: fg),
+              Opacity(
+                opacity: disabled ? 0.45 : 1,
+                child: Icon(icon, size: 18, color: fg),
+              ),
               const SizedBox(width: 5),
-              Text(label, style: TextStyle(fontSize: 11, color: fg, height: 1)),
+              Opacity(
+                opacity: disabled ? 0.45 : 1,
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: 11, color: fg, height: 1),
+                ),
+              ),
             ],
           ),
         ),
@@ -1789,11 +2346,13 @@ class _ComposerAttachmentTile extends StatelessWidget {
   final ChatAttachment att;
   final ImageProvider imageProvider;
   final VoidCallback onRemove;
+  final VoidCallback onOpen;
 
   const _ComposerAttachmentTile({
     required this.att,
     required this.imageProvider,
     required this.onRemove,
+    required this.onOpen,
   });
 
   @override
@@ -1802,39 +2361,45 @@ class _ComposerAttachmentTile extends StatelessWidget {
       clipBehavior: Clip.none,
       children: [
         if (att.isImage)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: Image(
-              image: imageProvider,
-              width: 48,
-              height: 48,
-              fit: BoxFit.cover,
+          GestureDetector(
+            onTap: onOpen,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image(
+                image: imageProvider,
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+              ),
             ),
           )
         else
-          Container(
-            width: 60,
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-            decoration: BoxDecoration(
-              color: const Color(0x0A000000),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0x14000000)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset('assets/document.png', width: 22, height: 22),
-                Text(
-                  att.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 9,
-                    color: _OhsdChatTheme.textSecondary,
+          GestureDetector(
+            onTap: onOpen,
+            child: Container(
+              width: 60,
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              decoration: BoxDecoration(
+                color: const Color(0x0A000000),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0x14000000)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset('assets/document.png', width: 22, height: 22),
+                  Text(
+                    att.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: _OhsdChatTheme.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         Positioned(
@@ -1927,6 +2492,9 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = msg.role == 'user';
+    final isAborting = context.select<ChatController, bool>(
+      (c) => c.abortingMessageIds.contains(msg.messageId),
+    );
     final imageAttachments = msg.attachments
         .where((a) => a.isImage)
         .take(6)
@@ -1959,8 +2527,74 @@ class _MessageBubble extends StatelessWidget {
         ),
       );
     } else {
+      String resolveMarkdownImageSrc(Uri uri) {
+        final raw = uri.toString();
+        if (raw.startsWith('data:')) return raw;
+        if (uri.hasScheme) return raw;
+        final base = AppConfig.httpBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+        if (raw.startsWith('/')) return '$base$raw';
+        return '$base/$raw';
+      }
+
+      ChatAttachment buildMarkdownImageAttachment(Uri uri, String? alt) {
+        final raw = uri.toString();
+        final fallbackName = () {
+          final seg =
+              uri.pathSegments.isNotEmpty ? uri.pathSegments.last : 'image';
+          final safe = _sanitizeFileName(seg.isEmpty ? 'image' : seg);
+          // 给无后缀的资源一个默认后缀，避免保存时没有扩展名
+          if (!safe.contains('.')) return '$safe.png';
+          return safe;
+        }();
+        return ChatAttachment(
+          uid: 'md_${raw.hashCode}',
+          name: _sanitizeFileName((alt ?? '').trim().isEmpty ? fallbackName : alt!.trim()),
+          isImage: true,
+          url: raw.startsWith('data:') ? null : resolveMarkdownImageSrc(uri),
+          dataUri: raw.startsWith('data:') ? raw : null,
+        );
+      }
+
       bubbleChild = MarkdownBody(
         data: msg.content,
+        selectable: true,
+        imageBuilder: (uri, title, alt) {
+          final att = buildMarkdownImageAttachment(uri, alt);
+          final src = att.dataUri ?? att.url ?? '';
+          final child = src.startsWith('data:')
+              ? Image.memory(
+                  base64Decode(src.split(',').last),
+                  fit: BoxFit.cover,
+                )
+              : Image.network(
+                  src,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Text('图片加载失败'),
+                  ),
+                );
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Material(
+                color: const Color(0xFFF4F4F4),
+                child: InkWell(
+                  onTap: () => _showImagePreview(context, att),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 260,
+                      maxHeight: 260,
+                      minWidth: 90,
+                      minHeight: 70,
+                    ),
+                    child: child,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
         styleSheet: MarkdownStyleSheet(
           p: const TextStyle(
             height: 1.65,
@@ -1971,6 +2605,16 @@ class _MessageBubble extends StatelessWidget {
         ),
       );
     }
+
+    final bubbleBody = Container(
+      width: isUser ? null : double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.75,
+      ),
+      decoration: bubbleDecoration,
+      child: bubbleChild,
+    );
 
     final bubbleColumn = Column(
       mainAxisSize: MainAxisSize.min,
@@ -1996,15 +2640,48 @@ class _MessageBubble extends StatelessWidget {
               fileAttachments: fileAttachments,
             ),
           ),
-        Container(
-          width: isUser ? null : double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.sizeOf(context).width * 0.75,
+        isUser
+            ? bubbleBody
+            : GestureDetector(
+                onLongPress: () => _copyMessageContent(context, msg.content),
+                child: bubbleBody,
+              ),
+        if (!isUser && msg.loading)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: OutlinedButton.icon(
+              onPressed: isAborting
+                  ? null
+                  : () async {
+                      final res = await context
+                          .read<ChatController>()
+                          .abortAssistantMessage(msg.messageId);
+                      if (!context.mounted) return;
+                      final tip =
+                          (res['message'] ?? (res['success'] == true ? '已发送停止指令' : '停止失败'))
+                              .toString();
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(tip)));
+                    },
+              icon: isAborting
+                  ? const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 1.8),
+                    )
+                  : const Icon(Icons.stop_circle_outlined, size: 16),
+              label: Text(isAborting ? '停止中...' : '停止'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _OhsdChatTheme.error,
+                side: const BorderSide(color: _OhsdChatTheme.error),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                minimumSize: const Size(0, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
           ),
-          decoration: bubbleDecoration,
-          child: bubbleChild,
-        ),
       ],
     );
 
@@ -2064,7 +2741,10 @@ class _MessageAttachments extends StatelessWidget {
                 .map(
                   (att) => ClipRRect(
                     borderRadius: BorderRadius.circular(6),
-                    child: _MessageImageThumb(att: att),
+                    child: _MessageImageThumb(
+                      att: att,
+                      onTap: () => _showImagePreview(context, att),
+                    ),
                   ),
                 )
                 .toList(),
@@ -2077,7 +2757,19 @@ class _MessageAttachments extends StatelessWidget {
               runSpacing: 4,
               alignment: isUser ? WrapAlignment.end : WrapAlignment.start,
               children: fileAttachments
-                  .map((att) => _MessageFileTile(att: att))
+                  .map(
+                    (att) => _MessageFileTile(
+                      att: att,
+                      onOpen: () async {
+                        final auth = context.read<AuthController>();
+                        await _showDocumentActionsSheet(
+                          context,
+                          att,
+                          auth.token,
+                        );
+                      },
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -2088,44 +2780,56 @@ class _MessageAttachments extends StatelessWidget {
 
 class _MessageImageThumb extends StatelessWidget {
   final ChatAttachment att;
-  const _MessageImageThumb({required this.att});
+  final VoidCallback onTap;
+
+  const _MessageImageThumb({required this.att, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final src = att.dataUri ?? att.url ?? '';
+    Widget img;
     if (src.startsWith('http://') || src.startsWith('https://')) {
-      return Image.network(src, width: 60, height: 60, fit: BoxFit.cover);
-    }
-    if (src.startsWith('data:')) {
+      img = Image.network(src, width: 60, height: 60, fit: BoxFit.cover);
+    } else if (src.startsWith('data:')) {
       try {
-        return Image.memory(
+        img = Image.memory(
           base64Decode(src.split(',').last),
           width: 60,
           height: 60,
           fit: BoxFit.cover,
         );
-      } catch (_) {}
+      } catch (_) {
+        img = Image.asset(
+          'assets/document.png',
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+        );
+      }
+    } else {
+      img = Image.asset(
+        'assets/document.png',
+        width: 60,
+        height: 60,
+        fit: BoxFit.cover,
+      );
     }
-    return Image.asset(
-      'assets/document.png',
-      width: 60,
-      height: 60,
-      fit: BoxFit.cover,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: img,
+      ),
     );
   }
 }
 
 class _MessageFileTile extends StatelessWidget {
   final ChatAttachment att;
-  const _MessageFileTile({required this.att});
+  final Future<void> Function() onOpen;
 
-  Future<void> _openIfAny() async {
-    final src = att.url;
-    if (src == null || src.isEmpty) return;
-    final uri = Uri.tryParse(src);
-    if (uri == null) return;
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  const _MessageFileTile({required this.att, required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -2134,7 +2838,7 @@ class _MessageFileTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(7),
       child: InkWell(
         borderRadius: BorderRadius.circular(7),
-        onTap: _openIfAny,
+        onTap: () => onOpen(),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 190),
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
@@ -2359,6 +3063,24 @@ class _SettingsPage extends StatelessWidget {
                 context,
               ).showSnackBar(const SnackBar(content: Text('外观设置：敬请期待')));
             },
+          ),
+          ListTile(
+            leading: const Icon(
+              Icons.menu_book_outlined,
+              color: _OhsdChatTheme.textSecondary,
+            ),
+            title: const Text(
+              'openHSD 教程',
+              style: TextStyle(color: _OhsdChatTheme.textPrimary),
+            ),
+            subtitle: const Text(
+              '插件下载与连接指引',
+              style: TextStyle(
+                fontSize: 12,
+                color: _OhsdChatTheme.textTertiary,
+              ),
+            ),
+            onTap: () => Navigator.of(context).pushNamed('/tutorial'),
           ),
           const Divider(height: 1, color: _OhsdChatTheme.borderHairline),
           ListTile(

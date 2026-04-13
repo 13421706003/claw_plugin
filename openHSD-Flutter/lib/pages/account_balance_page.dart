@@ -161,10 +161,14 @@ class _AccountBalancePageState extends State<_AccountBalancePage> {
           _balanceActionButton(
             icon: Icons.add_circle_outline,
             text: '充值',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const _RechargePage()),
+            onTap: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => _RechargePage(onBalanceRefresh: _loadData),
+                ),
               );
+              if (!mounted) return;
+              await _loadData();
             },
           ),
           const SizedBox(height: 14),

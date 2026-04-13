@@ -1,7 +1,9 @@
 part of 'chat_page.dart';
 
 class _RechargePage extends StatefulWidget {
-  const _RechargePage();
+  final Future<void> Function()? onBalanceRefresh;
+
+  const _RechargePage({this.onBalanceRefresh});
 
   @override
   State<_RechargePage> createState() => _RechargePageState();
@@ -74,7 +76,7 @@ class _RechargePageState extends State<_RechargePage> {
           context,
         ).showSnackBar(const SnackBar(content: Text('未能打开支付页面，请稍后重试')));
       }
-      await _showPayStatusDialog(
+      await _showPayConfirmDialog(
         api: api,
         orderNo: orderNo,
         channelName: _payType == 0 ? '微信' : '支付宝',
@@ -105,20 +107,58 @@ class _RechargePageState extends State<_RechargePage> {
     return Uri.tryParse(actionUrl);
   }
 
-  Future<void> _showPayStatusDialog({
+  Future<void> _showPayConfirmDialog({
     required ApiClient api,
     required String orderNo,
     required String channelName,
   }) async {
-    await showDialog<void>(
+    final paid = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => _RechargePayDialog(
-        api: api,
-        orderNo: orderNo,
-        channelName: channelName,
+      builder: (_) => AlertDialog(
+        title: Text('$channelName支付确认'),
+        content: const Text('请确认是否支付成功？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('未支付'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('已支付'),
+          ),
+        ],
       ),
     );
+    if (!mounted) return;
+    await _queryOrderAndRefresh(
+      api: api,
+      orderNo: orderNo,
+      paidConfirmed: paid == true,
+    );
+  }
+
+  Future<void> _queryOrderAndRefresh({
+    required ApiClient api,
+    required String orderNo,
+    required bool paidConfirmed,
+  }) async {
+    try {
+      final status = await api.getRechargeOrderStatus(orderNo);
+      final statusText = status['statusText']?.toString() ?? '未知';
+      if (!mounted) return;
+      final text = paidConfirmed
+          ? '已查询订单状态：$statusText'
+          : '已收到未支付反馈，订单状态查询结果：$statusText';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('订单状态查询失败：${e.toString().replaceFirst('Exception: ', '')}')),
+      );
+    } finally {
+      await widget.onBalanceRefresh?.call();
+    }
   }
 
   @override
@@ -334,105 +374,3 @@ class _RechargePageState extends State<_RechargePage> {
   }
 }
 
-class _RechargePayDialog extends StatefulWidget {
-  final ApiClient api;
-  final String orderNo;
-  final String channelName;
-
-  const _RechargePayDialog({
-    required this.api,
-    required this.orderNo,
-    required this.channelName,
-  });
-
-  @override
-  State<_RechargePayDialog> createState() => _RechargePayDialogState();
-}
-
-class _RechargePayDialogState extends State<_RechargePayDialog> {
-  Timer? _timer;
-  String _statusText = '待支付';
-  bool _completed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _startPolling();
-  }
-
-  void _startPolling() {
-    _timer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      try {
-        final status = await widget.api.getRechargeOrderStatus(widget.orderNo);
-        final text = status['statusText']?.toString() ?? '未知';
-        if (!mounted) return;
-        setState(() => _statusText = text);
-        final done = text == '已支付' || text == '已完成';
-        if (done) {
-          _timer?.cancel();
-          setState(() => _completed = true);
-          if (!mounted) return;
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('订单 ${widget.orderNo} 支付成功')));
-        }
-      } catch (_) {
-        // 轮询失败时静默，避免打断用户扫码流程。
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('${widget.channelName}支付状态'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.open_in_new_rounded,
-            size: 46,
-            color: _OhsdChatTheme.primary,
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            '已尝试拉起支付 App，请在完成支付后返回本页。',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: _OhsdChatTheme.textSecondary),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '订单号：${widget.orderNo}',
-            style: const TextStyle(
-              fontSize: 12,
-              color: _OhsdChatTheme.textTertiary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '当前状态：$_statusText',
-            style: TextStyle(
-              fontSize: 13,
-              color: _completed
-                  ? _OhsdChatTheme.success
-                  : _OhsdChatTheme.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(_completed ? '完成' : '关闭'),
-        ),
-      ],
-    );
-  }
-}

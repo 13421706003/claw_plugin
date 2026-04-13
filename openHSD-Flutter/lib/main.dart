@@ -6,6 +6,7 @@ import 'pages/chat_page.dart';
 import 'pages/login_page.dart';
 import 'pages/register_page.dart';
 import 'pages/splash_page.dart';
+import 'pages/tutorial_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +41,7 @@ class MyApp extends StatelessWidget {
         '/login': (_) => const LoginPage(),
         '/register': (_) => const RegisterPage(),
         '/chat': (_) => const ChatPage(),
+        TutorialPage.routeName: (_) => const TutorialPage(),
       },
     );
   }

@@ -5,6 +5,21 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../core/app_config.dart';
 
+/// 兼容文本帧与 UTF-8 二进制帧；已是 Map 时直接返回（便于测试注入）。
+dynamic _decodeWsPayload(dynamic data) {
+  if (data is String) return jsonDecode(data);
+  if (data is List<int>) return jsonDecode(utf8.decode(data));
+  if (data is Map) return data;
+  return null;
+}
+
+int? _parseOptionalInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString());
+}
+
 typedef WsChunkCallback =
     void Function(String messageId, String chunk, int seq);
 typedef WsFinalCallback =
@@ -109,52 +124,52 @@ class WsAiClient {
     _sub = _channel!.stream.listen(
       (data) {
         try {
-          final json = jsonDecode(data);
-          if (json is Map) {
-            final type = json['type']?.toString();
-            if (type == null) return;
+          final decoded = _decodeWsPayload(data);
+          if (decoded is! Map) return;
+          final json = Map<dynamic, dynamic>.from(decoded);
+          final type = json['type']?.toString();
+          if (type == null) return;
 
-            if (type == 'pong') return;
-            if (type == 'connected') {
-              onStatus(true);
-              return;
-            }
+          if (type == 'pong') return;
+          if (type == 'connected') {
+            onStatus(true);
+            return;
+          }
 
-            if (type == 'response_chunk') {
-              final messageId = json['messageId']?.toString() ?? '';
-              final chunk = json['chunk']?.toString() ?? '';
-              final seq = (json['seq'] as num?)?.toInt() ?? 0;
-              onChunk(messageId, chunk, seq);
-              return;
-            }
+          if (type == 'response_chunk') {
+            final messageId = json['messageId']?.toString() ?? '';
+            final chunk = json['chunk']?.toString() ?? '';
+            final seq = (json['seq'] as num?)?.toInt() ?? 0;
+            onChunk(messageId, chunk, seq);
+            return;
+          }
 
-            if (type == 'response') {
-              final messageId = json['messageId']?.toString() ?? '';
-              final status = json['status']?.toString() ?? 'completed';
-              final result = json['result']?.toString() ?? '';
-              final attachments = json['attachments'];
-              onFinal(messageId, status, result, attachments);
-              return;
-            }
+          if (type == 'response') {
+            final messageId = json['messageId']?.toString() ?? '';
+            final status = json['status']?.toString() ?? 'completed';
+            final result = json['result']?.toString() ?? '';
+            final attachments = json['attachments'];
+            onFinal(messageId, status, result, attachments);
+            return;
+          }
 
-            if (type == 'file_push') {
-              final messageId = json['messageId']?.toString() ?? '';
-              final clawId = json['clawId']?.toString() ?? '';
-              final fileUrl = json['fileUrl']?.toString() ?? '';
-              final fileName = json['fileName']?.toString() ?? 'file';
-              final fileType =
-                  json['fileType']?.toString() ?? 'application/octet-stream';
-              final fileSize = (json['fileSize'] as num?)?.toInt();
-              onFilePush?.call(
-                messageId,
-                clawId,
-                fileUrl,
-                fileName,
-                fileType,
-                fileSize,
-              );
-              return;
-            }
+          if (type == 'file_push') {
+            final messageId = json['messageId']?.toString() ?? '';
+            final clawId = json['clawId']?.toString() ?? '';
+            final fileUrl = json['fileUrl']?.toString() ?? '';
+            final fileName = json['fileName']?.toString() ?? 'file';
+            final fileType =
+                json['fileType']?.toString() ?? 'application/octet-stream';
+            final fileSize = _parseOptionalInt(json['fileSize']);
+            onFilePush?.call(
+              messageId,
+              clawId,
+              fileUrl,
+              fileName,
+              fileType,
+              fileSize,
+            );
+            return;
           }
         } catch (_) {
           // Ignore non-JSON.

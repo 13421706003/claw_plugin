@@ -48,7 +48,10 @@ class ChatController extends ChangeNotifier {
   // Used for streaming updates.
   final Map<String, String> pendingContent = {};
   final Map<String, Timer> _responseTimeouts = {};
-  static const Duration _responseTimeout = Duration(minutes: 1);
+  final Set<String> abortingMessageIds = <String>{};
+  // AI 响应可能较慢（联网、排队、设备端执行等），1 分钟容易误判“卡死”。
+  // 这里给更宽松的等待时间，避免 loading 过早结束造成误导。
+  static const Duration _responseTimeout = Duration(minutes: 10);
   int _msgCounter = 0;
   String _nextMessageId() =>
       'msg_${DateTime.now().millisecondsSinceEpoch}_${_msgCounter++}';
@@ -123,8 +126,13 @@ class ChatController extends ChangeNotifier {
       final loaded = history.map((m) {
         final role = m['role']?.toString() ?? '';
         final contentRaw = m['content'] ?? '';
-        final content = extractText(contentRaw);
         final parsedAttachments = _parseHistoryAttachments(m['attachments']);
+        var content = extractText(contentRaw);
+        if (content.isEmpty &&
+            role == 'assistant' &&
+            parsedAttachments.isNotEmpty) {
+          content = '收到设备推送的文件';
+        }
         return ChatMessage(
           messageId: m['messageId']?.toString() ?? '',
           role: role,
@@ -223,6 +231,7 @@ class ChatController extends ChangeNotifier {
     required String objectKey,
     required String mimeType,
     required int sizeBytes,
+    String? url,
   }) {
     final uid = '${DateTime.now().millisecondsSinceEpoch}-${_msgCounter++}';
     attachments = [
@@ -233,6 +242,7 @@ class ChatController extends ChangeNotifier {
         isImage: false,
         dataUri: null,
         objectKey: objectKey,
+        url: url,
         mimeType: mimeType,
         sizeBytes: sizeBytes,
       ),
@@ -342,6 +352,50 @@ class ChatController extends ChangeNotifier {
       }
       pendingContent.remove(messageId);
       _clearResponseTimeout(messageId);
+      notifyListeners();
+    }
+  }
+
+  Future<Map<String, dynamic>> abortAssistantMessage(String messageId) async {
+    if (messageId.trim().isEmpty) {
+      return {'success': false, 'message': '消息ID无效'};
+    }
+    if (abortingMessageIds.contains(messageId)) {
+      return {'success': false, 'message': '正在发送停止指令，请稍候'};
+    }
+
+    abortingMessageIds.add(messageId);
+    notifyListeners();
+    try {
+      final res = await api.abortMessage(
+        userId: userId,
+        messageId: messageId,
+        clawId: selectedClaw?.clawId,
+      );
+      final ok = res['success'] == true;
+      if (ok) {
+        final idx = messages.indexWhere(
+          (m) => m.messageId == messageId && m.role == 'assistant',
+        );
+        if (idx >= 0 && messages[idx].loading) {
+          messages[idx] = messages[idx].copyWith(
+            loading: false,
+            content: messages[idx].content.trim().isEmpty
+                ? '已发送停止指令'
+                : messages[idx].content,
+          );
+        }
+        pendingContent.remove(messageId);
+        _clearResponseTimeout(messageId);
+      }
+      return {
+        'success': ok,
+        'message': (res['message'] ?? (ok ? '已发送停止指令' : '停止失败')).toString(),
+      };
+    } catch (e) {
+      return {'success': false, 'message': '停止失败：${e.toString()}'};
+    } finally {
+      abortingMessageIds.remove(messageId);
       notifyListeners();
     }
   }
@@ -495,6 +549,7 @@ class ChatController extends ChangeNotifier {
             objectKey: uf.objectKey,
             mimeType: uf.mimeType,
             sizeBytes: uf.sizeBytes,
+            url: uf.url.isNotEmpty ? uf.url : null,
           );
         }
       }
@@ -560,10 +615,12 @@ class ChatController extends ChangeNotifier {
 
       final existing = messages[idx].content.trim();
       messages[idx] = messages[idx].copyWith(
-        content: existing.isNotEmpty ? existing : '响应超时，已自动刷新连接，请重试',
-        loading: false,
+        content: existing.isNotEmpty
+            ? existing
+            : '等待时间较长，正在刷新连接并重新加载结果…（可继续等待）',
+        // 不要直接结束 loading：只做“提示 + 自愈重连”，避免用户误以为任务已结束。
+        loading: true,
       );
-      pendingContent.remove(messageId);
       notifyListeners();
 
       // Auto-refresh connection when spinner is stuck for too long.
@@ -592,6 +649,14 @@ class ChatController extends ChangeNotifier {
     int? fileSize,
   ) {
     if (fileUrl.trim().isEmpty) return;
+    if (currentSession != 'main') return;
+    final claw = selectedClaw;
+    if (claw == null) return;
+    final pushCid = clawId.trim();
+    final curCid = claw.clawId.trim();
+    if (pushCid.isNotEmpty && pushCid != curCid) {
+      return;
+    }
     final lowerType = fileType.toLowerCase();
     final lowerName = fileName.toLowerCase();
     final isImage =
@@ -615,12 +680,37 @@ class ChatController extends ChangeNotifier {
       sizeBytes: fileSize,
     );
 
+    // 优先把推送文件挂到已有的同 messageId assistant 消息上，避免重复 messageId
+    // 导致列表复用抖动（表现为气泡短暂消失/闪动）。
+    final idx = (messageId.isNotEmpty)
+        ? messages.indexWhere(
+            (m) => m.messageId == messageId && m.role == 'assistant',
+          )
+        : -1;
+    if (idx >= 0) {
+      final merged = [...messages[idx].attachments, pushed];
+      final nextContent = messages[idx].content.trim().isNotEmpty
+          ? messages[idx].content
+          : (clawId.isNotEmpty ? '设备 $clawId 推送了文件' : '收到文件推送');
+      messages[idx] = messages[idx].copyWith(
+        content: nextContent,
+        attachments: merged,
+        loading: false,
+      );
+      notifyListeners();
+      return;
+    }
+
+    // 找不到对应消息时才追加一条，并确保 messageId 唯一。
+    final genId = 'filepush_${DateTime.now().millisecondsSinceEpoch}_${_msgCounter++}';
+    final effectiveId = (messageId.isNotEmpty &&
+            !messages.any((m) => m.messageId == messageId && m.role == 'assistant'))
+        ? messageId
+        : genId;
     messages = [
       ...messages,
       ChatMessage(
-        messageId: messageId.isNotEmpty
-            ? messageId
-            : 'file_${DateTime.now().millisecondsSinceEpoch}',
+        messageId: effectiveId,
         role: 'assistant',
         content: clawId.isNotEmpty ? '设备 $clawId 推送了文件' : '收到文件推送',
         loading: false,
